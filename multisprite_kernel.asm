@@ -167,29 +167,24 @@ cycle74_HMCLR
     
 START_OF_KERNEL_ROUTINES:
 
-    
-;------------------------------------------------------
-;--  15C1: drawKernelASM
-;--  01D3 (bytes)
-
  ;SUBROUTINE
  ;-- Local Variables
-.lanternDrawPF        = $DA
-;.nextLanternRow       = $DE
-;.lanternRow           = $DF
-.line                 = $E0
-.row                  = $E1
-;.maskY                = $E2
-.enemyNum             = $E3
-.p1drawY              = $E4
-.p0drawY              = $E5
-.curPlayerPtr         = $E6
-.curPlayerColPtr      = $E8
-.playerMask           = $EA
-.curEnemyPtr          = $EC
-.curEnemyColorPtr     = $EE
-.enemyMask            = $F2
 
+.lanternDrawPF      = $DA		;--  4 byte buffer for lantern playfield data
+
+.line               = $DE
+.row                = $DF
+.enemyNum           = $E0
+
+.p1drawY            = $E2
+.p0drawY            = $E3
+
+.curPlayerPtr       = $E4
+.curPlayerColPtr    = $E6
+.playerMask         = $E8
+.curEnemyPtr        = $EA
+.curEnemyColorPtr   = $EC
+.enemyMask          = $EE
 
 PLAYER_HEIGHT   = 16
 PLAYER_SCRN_OFS = 3    ;//--- this offsets the player with a row
@@ -324,51 +319,41 @@ drawKernelASM:
 	LDA     blackNinjaState,y  ;_NUSIZ1,y
 	AND     #PLAYER_FACING
 	STA     REFP0
-	                                	;-- Line #174 :		char nextLanternRow = 5;
-	;LDA     #$5
-	;STA     .nextLanternRow
-	                                	;-- Line #175 :		char lanternDrawPF[4];
-	                                	;-- Line #176 :		lanternDrawPF[0] = screenLanternsPF[0];
+
+	;------ load first row of lantern data into a buffer for the kernel
 	LDA     [screenLanternsPF+0]
-	STA     <[.lanternDrawPF+$0]    	;-- lanternDrawPF
-	                                	;-- Line #177 :		lanternDrawPF[1] = screenLanternsPF[1];
+	STA     <[.lanternDrawPF+$0]
 	LDA     [screenLanternsPF+1]
-	STA     <[.lanternDrawPF+$1]    	;-- lanternDrawPF
-	                                	;-- Line #178 :		lanternDrawPF[2] = screenLanternsPF[2];
+	STA     <[.lanternDrawPF+$1]
 	LDA     [screenLanternsPF+2]
-	STA     <[.lanternDrawPF+$2]    	;-- lanternDrawPF
-	                                	;-- Line #179 :		lanternDrawPF[3] = screenLanternsPF[3];
+	STA     <[.lanternDrawPF+$2]
 	LDA     [screenLanternsPF+3]
-	STA     <[.lanternDrawPF+$3]    	;-- lanternDrawPF
+	STA     <[.lanternDrawPF+$3]
 
 WaitForScreenStart:                    	;-- Line #194 :	    while (RIOT.timint >= 0) {}
 	LDA     TIMINT
 	BPL     WaitForScreenStart
 
 
+	;----------------------------------------------------------------------
+	;--- Start of Display
+
 L001D:
-	                                	;-- Line #195 :	    strobe TIA.wsync
+
 	STA     WSYNC
-	                                	;-- Line #196 :		TIA.vblank = 0x00;          // Turn on beam
 	LDA     #$0
-	STA     VBLANK
-	                                	;-- Line #197 :	    RIOT.tim64t = KERNEL_DISPLAY_TIME;  // start display timer
-	LDA     #<KERNEL_DISPLAY_TIME
+	STA     VBLANK						;--- Turn on beam
+	                                	
+	LDA     #<KERNEL_DISPLAY_TIME		;--  start display timer
 	STA     TIM64T
 
-	                                	;-- Line #199 :		char line, row, lanternRow	
-	                                	;-- Line #200 :		lanternRow = 20;	//--out of range
-;	LDA     #$14
-;	STA     .lanternRow
-	                                	;-- Line #202 :			lanternRow = 11;	// lantern row:  5 = bottom area, 11 = middle area
-;	LDA     #$B
-;	STA     .lanternRow
-	                                	;-- Line #204 :	    strobe TIA.wsync;
-	STA     WSYNC
-	                                	;-- Line #206 :	    row = TOP_ROW;
-	LDA     #<TOP_ROW
+	LDA     #<TOP_ROW					;-- set row counter
 	STA     .row
-	                                	;-- Line #207 :		asm {
+	
+	;-------------------------------------
+	;---- Main Display Loop
+
+	STA     WSYNC                                	
 	LDY     #SCREEN_HEIGHT
 DrawLoopStart:
 
@@ -376,13 +361,13 @@ DrawLoopStart:
 
 		LDX 	.row				;3	[3]
 
-		LDA 	screenBgColor,x		;4	[7]
-		STA 	COLUBK  			;3	[10]	-- TIA.colubk = screenBgColor[row];
-		AND		#1					;2	[12]
-		STA 	CTRLPF  			;3	[15]	-- TIA.ctrlpf = screenBgColor[row] & 1
+		LDA 	screenBgColor,x		;4	[7]		-- load background color for row
+		STA 	COLUBK  			;3	[10]
+		AND		#1					;2	[12]	-- bit 0 of background color is used to
+		STA 	CTRLPF  			;3	[15]	-- set mirrored vs repeating playfield
 
-		;CPX 	.lanternRow
-		;BEQ 	LanternKernel
+
+		;---- jump to the kernel needed for this row
 
 		LDA 	screenKernelType,X
 		BMI  	LanternKernel
@@ -392,16 +377,22 @@ DrawLoopStart:
 
 		JMP 	AsymKernel
 
-		;LDA 	blockingWall,x
-		;STA 	TIA.enam0
-		;AND 	#0xF0
-		;STA 	TIA.nusiz0
+		;--------------------------------------------------------
+		;--- Regular kernel - Symmetric
+		;--
+		;--  Blocking wall uses missile 1 (shares color with Bruce Lee)
 
-RegularKernel:		
-		LDA 	screenData,x		;4	[19]
-		TAX							;2	[21]	--- X = bitmapOfs = screenData[row]
+RegularKernel:
+		;--- prep work for blocking wall
+		AND 	#$32				;2  [48]  --- mask off kernelType bits that don't apply
+		STA 	<missile1y 			;3	[51]
+		AND 	#$F0				;2	[53]
+		STA 	NUSIZ1				;3	[56]
 
-NormalDrawLoopStart:
+		LDA 	screenData,x		;4	[60]
+		TAX							;2	[62]	--- X = bitmapOfs = screenData[row]
+
+;NormalDrawLoopStart:
         ;/* main row loop */
         LDA 	#4					;2	[23]
 		STA 	.line				;3	[26]
@@ -425,8 +416,12 @@ LineLoop:
 			AND 	(.playerMask),y		    ;5	[40]
 			STA 	GRP1    			    ;3	[43]
 			LDA 	(.curPlayerColPtr),y	;5	[48]
+			AND 	(.playerMask),y		    ;5	[40]
 			STA		COLUP1  			    ;3	[51]
-			
+
+			;LDA 	#0
+			;STA 	ENAM1
+
             ;/* odd lines, sprite 1 */
 			STA 	WSYNC
 			LDA 	bitmapColors,x			;4	[4]
@@ -444,6 +439,9 @@ LineLoop:
 			STA 	GRP0    				;3	[43]
 			LDA 	(.curEnemyColorPtr),y	;5	[48]
 			STA		COLUP0  				;3	[51]
+
+			LDA 	<missile1y
+			STA 	ENAM1
 			
 			DEC 	.line				    ;5	[56]
 			BNE 	LineLoop			    ;2/3	[59]
@@ -451,8 +449,10 @@ LineLoop:
         ;//} while (line > 0);
         
 		DEC 	.row						;5	[69]
-		
-		BPL		DrawLoopStart
+		BMI 	.done
+		;BPL		DrawLoopStart
+		JMP 	DrawLoopStart
+.done:
 		JMP 	DoneWithAllRows
 		
 		
@@ -524,6 +524,7 @@ LT_LineLoop:
 			DEX								;2	[63] -- bitmapOfs--
 			BPL 	LT_LineLoop				;3  [66]
 
+		;----- Done with lanterns, load next set of lanterns and prepare for next row
 LT_Return:
 		LDA 	#0
 		STA 	PF0
@@ -534,8 +535,8 @@ LT_Return:
 		LDX 	.row				;3	[3]
 		LDA 	screenBgColor,x		;4	[7]
 		STA 	COLUBK  			;3	[10]	-- TIA.colubk = screenBgColor[row];
-		AND		#1					;2	[12]
-		STA 	CTRLPF  			;3	[15]	-- TIA.ctrlpf = screenBgColor[row] & 1
+		;AND		#1					;2	[12]
+		;STA 	CTRLPF  			;3	[15]	-- TIA.ctrlpf = screenBgColor[row] & 1
 		
 		LDA 	screenLanternsPF+4	;3	[18]
 		STA 	.lanternDrawPF+0	;3	[21]
@@ -546,23 +547,18 @@ LT_Return:
 		LDA 	screenLanternsPF+7	;3	[36]
 		STA 	.lanternDrawPF+3	;3	[39]
 		
-		;LDA 	.nextLanternRow		;3	[42]
-		;STA 	.lanternRow			;3	[45]
-				
-		LDA 	screenData,x		;4	[49]
-		TAX							;2	[51]	--- X = bitmapOfs = screenData[row]
+		LDA 	screenKernelType,X	;4	[43]	;-- need to load next kernel type
+		JMP 	RegularKernel		;3	[46]
 
-		JMP 	NormalDrawLoopStart	;3	[54]
-
-		;//JMP 	DrawLoopStart			// 3	[74]	//--- RETURN to regular kernel
-		
 
 		;-------------------------------------------------------------------------
 		;------------------- Asymmetric Kernel... center is symmetric
 		;---
-		;------
+		;------  This kernel is typically used for drawing platforms.
 
 AsymKernel:
+		LDA 	#0
+		STA 	ENAM1
 
 		LDA 	screenData,x		;4	[19]
 		TAX							;2	[21]	--- X = bitmapOfs = screenData[row]
@@ -635,7 +631,8 @@ AsymLineLoop:
 	;-------------------------------------------------------------------------
 	;//------------------- Mountain Kernel
 	;
-	;- very basic symmetric kernel showing both sprites
+	;   very basic symmetric kernel for drawing mountains 
+	;     (and potentially other decorations) and both sprites
 
 MountainKernel:
 		LDX 	#15
@@ -700,6 +697,9 @@ DoneWithAllRows:
 	STA     ENAM1
 	JMP     DoneWithKernel
 
+;	LSR 	<zp     ;5
+;	BCC 	.label  ;3
+;	STA 	PF0		;3  [8/10] cycles per PFx
 
 
 END_OF_KERNEL_ROUTINES:
@@ -792,7 +792,7 @@ sixdigscore
     STA HMOVE               ;3  [73]  Early HMOVE
     jmp beginscore          ;3  [76]
 
- align 256
+ ;align 256
 
 loop2
     lda  (scorepointers),y     ;+5  68  204
@@ -989,7 +989,10 @@ bitmapPF0:
 	.byte $FF,$AA,$FF,$AA,$FF,$FF,$55,$55	;-- screen 1 top platform (asym)
 	.byte $F0,$A0,$FF,$AA,$FF,$FF,$55,$55
 
-	;.byte $00,$00,$00,$00,$00,$00,$00,$00  ;-- middle of the screen ladder
+	.byte $00,$00,$00,$00,$00,$00,$00,$00  ;-- middle of the screen ladder
+
+	.byte $1F,$AA,$FF,$AA,$FF,$FF,$55,$55  ;-- screen 3 platforms
+	.byte $1F,$AA,$FF,$AA,$FF,$FF,$55,$55
 
 
 ;------------------------------------------------------
@@ -1005,16 +1008,33 @@ bitmapPF1:
 
 	.byte $14,$10,$1C,$04,$14,$14,$1C,$08	;-- lattice
 
-	.byte $FF,$55,$FF,$55,$FF,$FF,$55,$55  ;-- screen 1 platforms
-	.byte $00,$00,$C0,$40,$C0,$C0,$40,$40
+	.byte $FF,$55,$FF,$55,$FF,$FF,$AA,$AA  ;-- screen 1 platforms
+	.byte $00,$00,$C0,$40,$C0,$C0,$80,$80
 
-	;.byte $00,$00,$00,$00,$00,$00,$00,$00	;-- screen 1 ladder
+	.byte $00,$00,$00,$00,$00,$00,$00,$00	;-- screen 1 ladder
+
+	.byte $FF,$55,$FF,$55,$FF,$FF,$AA,$AA  ;-- screen 3 platforms
+	.byte $F1,$51,$F1,$51,$F1,$F1,$A0,$A0
+
+
+;------------------------------------------------------
+
+lanternColors:
+	.byte $38,$66,$DA,$44,$28,$3E,$3A,$00
+
+pfBitmask:
+	.byte 16,32,64,128,128,64,32,16
+	.byte 8,4,2,1,1,2,4,8
+	
+ladderGfx:
+	.byte 128,0,0,128,0,0,128,0
+	.byte 128,0,0,128,0,0,128,0
 
 
 ;------------------------------------------------------
 ;--  1237: bitmapPF2
 ;--  0048 (bytes)
-
+	align 256
 bitmapPF2:
 	.byte $00,$00,$00,$00,$00,$00,$00,$00
 	.byte $FF,$FF,$FF,$FF,$FF,$FF,$00,$00  ;-- ground
@@ -1028,27 +1048,30 @@ bitmapPF2:
 	.byte $80,$00,$00,$80,$00,$00,$80,$00  ;-- screen 1 platform + ladder
 	.byte $80,$00,$00,$80,$00,$00,$80,$00  ;-- screen 1 ladder
 
+	.byte $82,$05,$07,$85,$87,$87,$80,$00  ;-- screen 3 platform + ladder
+	.byte $9E,$15,$1F,$95,$1F,$1F,$95,$15  ;-- screen 3 platforms
+	
+
 
 ;----------------------------------------------------
 ;--- asymmetric bitmaps
 
 bitmapPF0_1:
 	.byte $F0,$A0,$F0,$A0,$F0,$F0,$A0,$A0
-	.byte $F0,$A0,$F0,$A0,$F0,$F0,$A0,$A0
+	.byte $F0,$A0,$F0,$A0,$F0,$F0,$50,$50
+	.byte $F0,$50,$F0,$50,$F0,$F0,$50,$00	;-- also used by PF0_1
+	.byte $00,$00,$FF,$AA,$FF,$FF,$55,$55
+
 bitmapPF1_1:
 	.byte $F0,$50,$F0,$50,$F0,$F0,$50,$00	;-- also used by PF0_1
-	.byte $FF,$55,$FF,$55,$FF,$FF,$55,$55
+	.byte $FF,$55,$FF,$55,$FF,$FF,$AA,$AA
+	.byte $80,$00,$00,$80,$00,$00,$80,$00  ;-- screen 1 ladder
+	.byte $00,$00,$F1,$51,$F1,$F1,$A0,$A0  ;-- screen 3 platforms
 
 
 bitmapPF4 = bitmapPF1_1 - 0x28
 bitmapPF5 = bitmapPF0_1 - 0x28
-;------------------------------------------------------
-;--  127F: ladderGfx
-;--  0010 (bytes)
 
-ladderGfx:
-	.byte 128,0,0,128,0,0,128,0
-	.byte 128,0,0,128,0,0,128,0
 
 
 
@@ -1065,34 +1088,14 @@ bitmapColors:
 
 	.byte $0A,$0C,$0A,$0E,$0A,$0A,$0C,$0E   ;-- lattice
 
+	.byte $00,$00,$00,$00,$40,$44,$34,$44   ;-- screen 1 platforms
 	.byte $00,$00,$00,$00,$40,$44,$34,$44
-	.byte $00,$00,$00,$00,$40,$44,$34,$44
-	;.byte $44,$34,$44,$34,$44,$34,$44,$34   ;-- screen 1 platforms
-	;.byte $00,$44,$00,$34,$00,$44,$34,$44
+	.byte $38,$66,$DA,$44,$28,$3E,$3A,$00	;-- screen 1 ladder
 
-	
-	
-	.byte $38,$66,$DA,$44,$28,$3E,$3A,$00	;-- lanterns
-
+	.byte $00,$00,$00,$00,$40,$44,$34,$44	;-- screen 3 platforms
 	.byte $00,$00,$00,$00,$40,$44,$34,$44
 
 
-;------------------------------------------------------
-;--  12DF: lanternColors
-;--  0008 (bytes)
-
-lanternColors:
-	.byte $38,$66,$DA,$44,$28,$3E,$3A,$00
-
-
-
-;------------------------------------------------------
-;--  12E7: pfBitmask
-;--  0010 (bytes)
-
-pfBitmask:
-	.byte 16,32,64,128,128,64,32,16
-	.byte 8,4,2,1,1,2,4,8
 
 
 ;------------------------------------------------------

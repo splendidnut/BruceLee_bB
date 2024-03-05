@@ -71,19 +71,31 @@ rand        = $B8
 ;pfheight      = $BA       ;-- define height of playfield blocks
 
 ; playfield is now a pointer to graphics
-playfield       = $BC
-PF1pointer      = $BC
-PF1pointerHi    = PF1pointer + 1
-PF2pointer      = $BE
-PF2pointerHi    = PF2pointer + 1
+;playfield       = $BC
+;PF1pointer      = $BC
+;PF1pointerHi    = PF1pointer + 1
+;PF2pointer      = $BE
+;PF2pointerHi    = PF2pointer + 1
 
 ;---------------------------------------------------
 ;--- variables for screen
+;
+;-- screenData - index into graphics table
+;-- screenBgColor - bg color for row
+;-- screenKernelType -
+;--   bit 0 - is platform?
+;--   bit 1 - has blocking wall?
+;--   bit 4/5 - block wall size (nusiz1)
+;--   bit 6/7 - kernel type:
+;--      00 = regular
+;--      40 = platforms
+;--      80 = lanterns
+;--      F0 = background patterns (ex: mountains)
 
-screenData           = $F080
-screenBgColor        = $F098
-screenKernelType     = $F0B0
-screenLanternsPF     = $F0D0
+screenData           = $F080  ; 80..97
+screenBgColor        = $F098  ; 98..AF
+screenKernelType     = $F0B0  ; B0..C7
+screenLanternsPF     = $F0D0  ; D0..DF
 
 writeScreenData       = $F000
 writeScreenBgColor    = $F018

@@ -45,8 +45,11 @@
     dim spriteTimers = c ;d,e
     dim spriteStates = f ;g,h
     dim spriteFrames = i ;j,k
-    dim currentScreen = l
+    
     dim curSprite = p       ;--- current sprite being handled (0=player, 1=ninja, 2=yamo)
+
+    dim currentScreen = q       ;-- current game screen
+    dim gameState = s           ;-- current state of the game
 
 
     ;---- Sprite variables
@@ -67,7 +70,12 @@
     dim yamoState = spriteStates + 2
     dim yamoTimer = spriteTimers + 2
 
+    ;---------------------------------
+    ;--- Game State constants
     
+    const GAME_INIT         = $00
+    const GAME_SCREEN_INIT  = $F0
+    const GAME_RUNNING      = $80
 
 ;===================================================================================
 ;--  Bank 1 - Game Code!
@@ -84,17 +92,18 @@ Start
     playerFrame = 0
     gosub SetPlayerFrame
 
+    gameState = GAME_INIT
+
     blackNinjaFrame = 0
     yamoFrame = 0
 
-    ;---- clear superchip RAM
-    for i = 0 to 127
-        writeScreenData[i] = 0
-    next i
+    ;---------------------------------------------------------
 
+DoScreenInit
     gosub LoadLevel
     gosub InitBlackNinja
     gosub InitYamo
+    gameState = GAME_RUNNING
     goto MainLoop
 
 ;----------------------------------
@@ -117,10 +126,12 @@ MainLoop
     mainTimer = mainTimer + 1
 
     gosub HandlePlayer
+    if gameState = GAME_SCREEN_INIT then goto DoScreenInit
+
+DoGameRunningLogic
     gosub HandleBlackNinja
     gosub HandleYamo
     gosub CheckLanterns
-
     goto MainLoop
 
 
@@ -134,45 +145,66 @@ MainLoop
 	_Color_Blue_Sky,_Color_Blue_Sky,_Color_Blue_Sky
 end
 
-    ;//-- Screen 2 from original game
+    
 	
     data levelData
-    0x08,0x20,0x20,0x20,0x20,0 ;0x40
-    0x10,0x00,0x00,0x00,0x00,0 ;0x38
+    0x08,0x20,0x20,0x20,0x20,0  ;//-- Screen 1 from original game
+    0x30,0x38,0x38,0x38,0x38,0
+    0x28,0x00,0x00,0x00,0x00
+    0x00,0x00,0x00
+
+    0x08,0x20,0x20,0x20,0x20,0  ;//-- Screen 2 from original game
+    0x10,0x00,0x00,0x00,0x00,0
     0x18,0x00,0x00,0x00,0x00
     0x00,0x00,0x00
 
-    0x08,0x20,0x20,0x20,0x20,0
-    0x30,0x38,0x38,0x38,0x38,0
-    0x28,0x00,0x00,0x00,0x00
+    0x08,0x20,0x20,0x00,0x00,0  ;//-- Screen 3 from original game
+    0x48,0x00,0x00,0x00,0x00,0
+    0x40,0x00,0x00,0x00,0x00
     0x00,0x00,0x00
 end
 
     ;--- default level row type data for mountain screens
+    const _KT_PLATFORM  = 8         ;--    8 = platform/ground
+    const _KT_RT_WALL   = 0x12      ;-- 0x12 = wall on right
+    const _KT_LR_WALL   = 0x22      ;-- 0x22 = wall on left & right
+    const _KT_LANTERN   = 0x80
+    const _KT_MOUNTAINS = 0xF0      ;-- 0xF0 = mountains / decorative bg
+
     data levelRowTypes
-    1,0,0,0,0,0x80      ;--    1 = platform/ground
-    1,0,0,0,0,0x80      ;-- 0x80 = lanterns
-    1,0,0,0,0
-    0,0xF0,0            ;-- 0xF0 = mountains / decorative bg
+    8,_KT_LR_WALL,_KT_LR_WALL,_KT_LR_WALL,_KT_LR_WALL,_KT_LANTERN
+    8,0,0,0,0,_KT_LANTERN
+    8,0,0,0,0
+    0,_KT_MOUNTAINS,0                    
 end
 
-    data screen1_lanterns
+    data screen_lanterns
+    0,    0, 0x10, 0x20     ;-- screen 1 lanterns
+    0x40, 0, 0x05, 0x20
+
     0, 0x80, 0x80, 0        ;-- screen 2 lanterns
-    0, 0x41, 0x41, 0
-    
-    0,    0, 0x10, 0x10     ;-- screen 1 lanterns
-    0x40, 0, 0x05, 0x10
+    0, 0x41, 0x41, 0    
+
+    0,0x11,0x11,0             ;-- screen 3 lanterns
+    0,0x11,0x10,0
 end
 
 LoadLevel
     dim levelDataOfs = temp2
     dim lanternDataOfs = temp3
+    dim highWallStyle = temp4
+
+    ;---- clear superchip RAM
+    for i = 0 to 127
+        writeScreenData[i] = 0
+    next i
 
     ;-- set data offsets base on level number
     
-    levelDataOfs = 20
-    lanternDataOfs = 8
-    if currentScreen = 1 then levelDataOfs = 0 : lanternDataOfs = 0
+    levelDataOfs = 0
+    lanternDataOfs = 0
+    if currentScreen = 1 then levelDataOfs = 20 : lanternDataOfs = 8
+    if currentScreen = 2 then levelDataOfs = 40 : lanternDataOfs = 16
 
     for temp1 = 0 to 20
 		writeScreenData[temp1]	  = levelData[levelDataOfs] | 0x7
@@ -181,33 +213,60 @@ LoadLevel
         levelDataOfs = levelDataOfs + 1
 	next
     for temp1 = 0 to 8
-        writeScreenLanternsPF[temp1] = screen1_lanterns[lanternDataOfs]
+        writeScreenLanternsPF[temp1] = screen_lanterns[lanternDataOfs]
         lanternDataOfs = lanternDataOfs + 1
     next
 
+    ;--- missile 1 is used for blocking walls
+    missile1x = 159
+
+    ;--- experiment to enable blocking walls on the screen edges
+    ;------------------------------------------------------------------------
     ;--- since we have just a few screens, handle the differences here
 
-    if currentScreen = 1 then _skip_asym_rows
-    ;-- asymmetric platform rows
-    writeScreenKernelType[6]  = 0x41    ;-- 1 signifies platform
-    writeScreenKernelType[12] = 0x41
+    ;-- do high wall    
+    highWallStyle = 0
+    if currentScreen = 1 then highWallStyle = _KT_RT_WALL  ;-- screen 1 has higher wall only on right
+    if currentScreen = 2 then highWallStyle = _KT_LR_WALL
 
+    writeScreenKernelType[7]  = highWallStyle
+    writeScreenKernelType[8]  = highWallStyle
+    writeScreenKernelType[9]  = highWallStyle
+    writeScreenKernelType[10] = highWallStyle
+
+    ;-- asymmetric platform rows
+    if currentScreen = 1 then _skip_asym_rows
+        writeScreenKernelType[12] = 0x48    ;-- 8 signifies platform
+        if currentScreen = 2 then _skip_asym_rows
+            writeScreenKernelType[6]  = 0x48
+        
 _skip_asym_rows
+
+    if currentScreen <> 2 then _skip_screen2_block
+    writeScreenKernelType[13]  = _KT_RT_WALL
+    writeScreenKernelType[14]  = _KT_RT_WALL
+    writeScreenKernelType[15]  = _KT_RT_WALL
+    writeScreenKernelType[16]  = _KT_RT_WALL
+_skip_screen2_block
 
     return
 
 
 nextScreenRight
-    if currentScreen = 1 then return
-    currentScreen = 1
+    if currentScreen = 2 then return
+    currentScreen = currentScreen + 1
     player0x = 0
-    goto LoadLevel
+    gameState = GAME_SCREEN_INIT
+    return
+
 
 nextScreenLeft
     if currentScreen = 0 then return
-    currentScreen = 0
+    currentScreen = currentScreen - 1
     player0x = 149
-    goto LoadLevel
+    gameState = GAME_SCREEN_INIT
+    return
+
 
 
 ;-----------------------------------------------------------------------------------
@@ -1127,7 +1186,7 @@ CheckForBackground
     spriteRow = player0y[curSprite] - PLAYER_GROUND_OFS : spriteRow = spriteRow / 8
 
     ;-- return IF this is a background row (determined by low nibble of kernel type)
-    if (screenKernelType[spriteRow] & 0xF) = 0 then temp5 = 1 : return otherbank
+    if (screenKernelType[spriteRow] & 0x8) = 0 then temp5 = 1 : return otherbank
 
     ;-- check if asymmetric.
     if (screenKernelType[spriteRow] & 0xF0) = 0x40 then goto _bg_asym
@@ -1174,6 +1233,7 @@ CheckForLadder
     ;-- current screen determines starting offset
     if currentScreen = 0 then temp6 = 0
     if currentScreen = 1 then temp6 = 8
+    if currentScreen = 2 then temp6 = 0
 
 _check_ladder_loop
     ;-- first byte of ladder array indicates if we reached the end of the array or not
@@ -1258,8 +1318,8 @@ ct_BruceLee:            .byte _00,_00,_00,_00,_00,_00,_00,_2A
                         .byte _2A,_2A,_2A,_2A,_2A,_2A,_00,_00
 ct_BruceLeeDuck1:       .byte _00,_00,_00,_00,_00,_00,_2A,_2A
                         .byte _2A,_2A,_2A,_2A,_00,_00
-ct_BruceLeeDuck2:       .byte _00,_00,_00,_2A,_2A,_2A,_2A,_00
-                        .byte _00,_00,_00,_00,_00,_00,_00,_00
+ct_BruceLeeDuck2:       .byte _00,_00,_00,_00,_00,_2A,_2A,_2A
+                        .byte _2A,_00,_00,_00,_00,_00,_00,_00
 
 ct_white:               .byte _0A,_0A,_0C,_0E,_0A,_0C,_0C,_0E
                         .byte _0A,_0A,_0C,_0E,_0A,_0C,_0C,_0E
@@ -1459,24 +1519,15 @@ end
 end
 
 
-/*
-	0x66,0x24,0x66,0x42,0x7E,0x3C,0x3E,0x7D,	// ducking frame 1
-	0xB8,0x18,0x1C,0x1C,0x3C,0,0,0,
-	
-	//0x6C,
-	0xE3,0xC6,0xFE,0x7C,0xBB,0x30,0x38,0x78,	// ducking frame 2
-	0,0,0,0,0,0,0,0,
-    0,
-};
-*/
+    ;--- bruce lee ducking frames
 
     data _Bruce_Ducking1
     0
+    %11000110
+    %01000100
     %01100110
-    %00100100
-    %01100110
-    %01000010
-    %01111110
+    %00100010
+    %00111110
     %00111100
     %00111110
     %01111101
@@ -1493,19 +1544,21 @@ end
 
     data _Bruce_Ducking2
     0
-    %11100011
-    %11000110
-    %11111110
-    %01111100
-    %10111011
+
+    %11000100
+    %01100111
+    %01100011
+    %01111110
+    %01111110
+    %01111101
+    %01111000
     %00110000
+
     %00111000
     %01111000
+    0
+    0
 
-    0
-    0
-    0
-    0
     0
     0
     0
