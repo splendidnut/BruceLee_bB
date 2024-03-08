@@ -1,0 +1,20 @@
+BruceLee 2600
+
+TODO:
+  - initial enemy positions per level?
+  - basic sounds
+  - player/enemy collisions
+  - enemy/world interactions
+  - scoring
+
+IMPLEMENTED:
+  - basic sounds
+    - collect lantern
+    - punch
+  - allow blocking walls to affect player properly
+  - basic player/enemy collisions
+    - player can punch both yamo and the black ninja, and knock them back
+    - enemies can hurt player
+  - scoring
+    - lanterns (125 pts)
+    - punching yamo/ninja (100 pts)

@@ -17,6 +17,7 @@
 ;--  Constants
 ;-----------------------
 
+    const pfscore = 3
     ;--------------------------------------------------------------
     ;--- create a flag and include a color definition table
     ;--- to allow easy handling of NTSC & PAL color differences
@@ -51,6 +52,8 @@
     dim currentScreen = q       ;-- current game screen
     dim gameState = s           ;-- current state of the game
 
+    dim sndEffect = u
+    dim sndPos    = v
 
     ;---- Sprite variables
 
@@ -97,6 +100,10 @@ Start
     blackNinjaFrame = 0
     yamoFrame = 0
 
+    ;--- test scoreboard
+    pfscore1 = 0         ;21
+    statusbarlength = 0  ;255
+
     ;---------------------------------------------------------
 
 DoScreenInit
@@ -112,8 +119,12 @@ DoScreenInit
 ;
 
 PrepScreen      ;-- called during vblank
+    gosub PlaySound
+    if gameState = GAME_RUNNING then gosub CheckLanterns
     gosub SetBlackNinjaFrame
     gosub SetYamoFrame
+
+    ;--- make sure background screen color is set before screen drawing starts
     COLUBK = _Color_Blue_Sky - 4
     return otherbank
 
@@ -131,7 +142,6 @@ MainLoop
 DoGameRunningLogic
     gosub HandleBlackNinja
     gosub HandleYamo
-    gosub CheckLanterns
     goto MainLoop
 
 
@@ -164,6 +174,10 @@ end
     0x00,0x00,0x00
 end
 
+    data levelDataStartOfs
+    0, 20, 40
+end
+
     ;--- default level row type data for mountain screens
     const _KT_PLATFORM  = 8         ;--    8 = platform/ground
     const _KT_RT_WALL   = 0x12      ;-- 0x12 = wall on right
@@ -185,8 +199,12 @@ end
     0, 0x80, 0x80, 0        ;-- screen 2 lanterns
     0, 0x41, 0x41, 0    
 
-    0,0x11,0x11,0             ;-- screen 3 lanterns
-    0,0x11,0x10,0
+    0, 0x11, 0x11, 0             ;-- screen 3 lanterns
+    0, 0x11, 0x01, 0
+end
+
+    data lanternDataStartOfs
+    0, 8, 16
 end
 
 LoadLevel
@@ -199,12 +217,10 @@ LoadLevel
         writeScreenData[i] = 0
     next i
 
-    ;-- set data offsets base on level number
-    
-    levelDataOfs = 0
-    lanternDataOfs = 0
-    if currentScreen = 1 then levelDataOfs = 20 : lanternDataOfs = 8
-    if currentScreen = 2 then levelDataOfs = 40 : lanternDataOfs = 16
+    ;-- set data offsets base on level number    
+    levelDataOfs = levelDataStartOfs[currentScreen]
+    lanternDataOfs = lanternDataStartOfs[currentScreen]
+
 
     for temp1 = 0 to 20
 		writeScreenData[temp1]	  = levelData[levelDataOfs] | 0x7
@@ -284,6 +300,7 @@ nextScreenLeft
     ;--- player movement state
     const PLAYER_STATE_MASK  = 0xF0
     const CLEAR_PLAYER_STATE = 0x0F
+    const PLAYER_HIT          = 0x10
     const PLAYER_DUCK   	  = 0x30
     const PLAYER_FALL   	  = 0x40
     const PLAYER_JUMP   	  = 0x80
@@ -298,6 +315,7 @@ nextScreenLeft
     const DUCK_TIMER    = 12
     const JUMP_TIMER    = 12
     const PLAYER_MAX_KICK_JUMP = 8
+    const WAIT_PLAYER_STUNNED = 40
 
     const PLAYER_FACING = 0x08
 
@@ -328,6 +346,10 @@ HandlePlayer
     ;--   keep track of whether player can move freely or not    
     canMove_bit0{0} = 1
 
+    ;-- check if player might get hit by enemy
+    ;if playerState & PLAYER_STATE_MASK <> PLAYER_HIT then gosub CheckForPlayerHitByEnemy
+
+    if playerState & PLAYER_STATE_MASK = PLAYER_HIT then goto HandlePlayerHit
     if playerState & PLAYER_STATE_MASK = PLAYER_DUCK then goto HandlePlayerDuckState
     if playerState & PLAYER_STATE_MASK = PLAYER_FALL then goto HandlePlayerFallState
     if playerState & PLAYER_STATE_MASK = PLAYER_JUMP then goto HandlePlayerJumpState
@@ -335,6 +357,16 @@ HandlePlayer
 
     ;--- when ALL else fails handle the normal state of the player
     goto HandlePlayerNormalState
+
+;----------------------------------------------------------
+HandlePlayerHit
+    if (playerTimer <> 0) then goto _cont_player_hit
+        playerState = playerState & CLEAR_PLAYER_STATE
+        goto HandlePlayerNormalState
+_cont_player_hit
+    
+    canMove_bit0{0} = 0     ;-- stop player from moving (stunned)
+    goto _handle_player_world_interactions
 
 ;----------------------------------------------------------
 HandlePlayerFallState
@@ -402,11 +434,11 @@ _skip_player_jump_check
         ;--- check if player can do an action
         if playerState & PLAYER_ACTION_MASK <> 0 then _player_already_acting
         
-        if !isMoving_bit1{1} then playerState = playerState | PLAYER_PUNCH
+        if !isMoving_bit1{1} then playerState = playerState | PLAYER_PUNCH : sndPos = 0 : sndEffect = 2
         if isMoving_bit1{1} then playerState = playerState | PLAYER_KICK_AND_JUMP : playerTimer = PLAYER_MAX_KICK_JUMP
        
-        if (playerState & FACE_DIR) = FACE_LEFT then player0x = player0x - 2
-        if (playerState & FACE_DIR) <> FACE_LEFT then player0x = player0x + 2
+        if (playerState & FACE_DIR) = FACE_LEFT then if player0x > 4 then player0x = player0x - 2
+        if (playerState & FACE_DIR) <> FACE_LEFT then if player0x < 150 then player0x = player0x + 2
 
         actionTimer = KICK_TIME
         
@@ -435,13 +467,22 @@ _player_handle_action_timer
 	;--- Player Movement - Horizontal + Facing direction
 
     if !canMove_bit0{0} then _done_player_lr
+
+        ;-- figure out which row is shoulder-level with player
+        ;--   (for checking for a blocking wall)
+        temp5 = (player0y - 7) / 8
+        temp5 = screenKernelType[temp5]
+        temp5 = temp5 & 0xF0                ;will either be 0x10 or 0x20
 	
         if !joy0right then _player_check_left
             playerState = playerState & FACE_RIGHT
             if player0x >= 152 then _done_player_lr ;-- block at far right
             player0x = player0x + 1
 
-            if player0y < 127 || player0x < 152 then _done_player_lr
+            ;if player0y < temp5 || player0x < 152 then _done_player_lr
+            if player0x < 152 then goto _done_player_lr
+            if temp5 = 0x10 then goto _done_player_lr 
+            if temp5 = 0x20 then goto _done_player_lr
             goto nextScreenRight
             
 	
@@ -452,17 +493,19 @@ _player_check_left
             
             player0x = player0x - 1
 
-            if player0y < 127 || player0x >= 1 then _done_player_lr
+            ;if player0y < temp5 || player0x >= 1 then _done_player_lr
+            if player0x <> 0 then goto _done_player_lr
+            if temp5 = 0x20 then goto _done_player_lr
             goto nextScreenLeft
 
 _done_player_lr
 
 
     ;------------------------------------------------------------
+_handle_player_world_interactions
 
     if playerTimer > 0 then playerTimer = playerTimer - 1
 
-    
     ;--------------------------------------------------------------
 	;--- Handle Ladder - check if player is on or near a ladder
 
@@ -560,6 +603,7 @@ end
     const COL_BRUCELEE         = <(ct_BruceLee-SpriteColorTables)
     const COL_BRUCELEE_DUCK1   = <(ct_BruceLeeDuck1-SpriteColorTables)
     const COL_BRUCELEE_DUCK2   = <(ct_BruceLeeDuck2-SpriteColorTables)
+    const COL_BRUCELEE_HURT    = <(ct_red-SpriteColorTables)
 
 
 ;------------------------
@@ -595,6 +639,8 @@ _player_no_ducking_animation
     ;--- climbing animation (mostly handled in the HandlePlayerClimbState)
     if playerFrame < FRM_BRUCE_JMP_KICK then if playerState & PLAYER_STATE_MASK = PLAYER_CLIMB then playerFrame = FRM_BRUCE_CLIMBING
 
+    if playerState & PLAYER_STATE_MASK = PLAYER_HIT then player0pal = ((mainTimer & 2) / 2) + COL_BRUCELEE_HURT
+
     ;--- setup player frame
 SetPlayerFrame
     player0pointerlo = _player_gfx_lo[playerFrame]
@@ -616,6 +662,7 @@ SetPlayerFrame
 	const ENEMY_RUN         = 0x01
 	const ENEMY_ATTACK      = 0x02
 	const ENEMY_FALL        = 0x03
+    const ENEMY_KNOCK_BACK  = 0x06
 
 ;//--- TODO: need to INVERT facing direction 
 ;//          until Enemy Graphics has been fixed to match player
@@ -628,6 +675,9 @@ SetPlayerFrame
     const SN_BLACK_NINJA = 1
     const SN_YAMO = 2
 
+    const JUMP_CNT = 48
+    const HALF_JUMP_CNT = 24
+
 /*
     dim movementFlags = temp1
     dim canMove_bit0 = temp1
@@ -635,10 +685,16 @@ SetPlayerFrame
     dim isLadder_bit2 = temp1
 */
 
+    ;-------------------------------------------------------
+    ;-- shared temp vars used in enemy subroutines
+
+    dim enemyState = temp2
+    dim deltaX = temp3
+    dim deltaY = temp4
+
 ;--- handle moving an enemy (curSprite), requires movementFlags in temp1
 MoveEnemy
-    dim enemyState = temp2
-    if curSprite = SN_BLACK_NINJA then enemyState = blackNinjaState else enemyState = yamoState
+    enemyState = spriteStates[curSprite]
 
     if !canMove_bit0{0} then goto _done_move_enemy_lr
 	if enemyState & ENEMY_DIR_BIT <> ENEMY_FACE_RIGHT then goto _move_enemy_left
@@ -652,23 +708,93 @@ _done_move_enemy_lr
     
     ;-- apply gravity
     if temp5 = 0 then goto _enemy_on_ground
-        if curSprite = SN_YAMO then if enemyState & ENEMY_STATE_MASK = ENEMY_ATTACK then goto _enemy_on_ground
+
+        ;-- check if enemy is flying thru the air (knocked back), IF SO, skip gravity
+        if enemyState & ENEMY_STATE_MASK = ENEMY_KNOCK_BACK then goto _enemy_on_ground
+
+        if curSprite <> SN_YAMO then _not_yamo_for_gravity
+            if enemyState & ENEMY_STATE_MASK = ENEMY_ATTACK then goto _enemy_on_ground    
+_not_yamo_for_gravity
 
         enemyState = enemyState & ENEMY_DIR_MASK : enemyState = enemyState | ENEMY_FALL
         if mainTimer & 0x1 = 1 then player0y[curSprite] = player0y[curSprite] - 1
         goto _done_enemy_move
 
-_enemy_on_ground    ;-- also YAMO in JUMP ATTACK state
+_enemy_on_ground    ;-- also YAMO in JUMP ATTACK / KNOCK BACK state
         if enemyState & ENEMY_STATE_MASK <> ENEMY_FALL then goto _done_enemy_move
         enemyState = enemyState & ENEMY_DIR_BIT : enemyState = enemyState | ENEMY_WAIT
-        if curSprite = SN_BLACK_NINJA then blackNinjaTimer = ENEMY_FALL_WAIT_TIMER else yamoTimer = ENEMY_FALL_WAIT_TIMER
+        spriteTimers[curSprite] = #ENEMY_FALL_WAIT_TIMER
 
 _done_enemy_move
 
     ;-- save enemy state
-    if curSprite = SN_BLACK_NINJA then blackNinjaState = enemyState else yamoState = enemyState
+    spriteStates[curSprite] = enemyState
     return
 
+
+;=======================================================
+;-- Player / Enemy Interactions
+;-------------------------------------------------------
+
+CheckForPlayerPunchEnemy
+    enemyState = spriteStates[curSprite]
+
+    if enemyState & ENEMY_STATE_MASK = ENEMY_KNOCK_BACK then goto _enemy_not_hit
+    if ((player0y[curSprite] - player0y) + 6) >= 12 then goto _enemy_not_hit
+
+    deltaX = (player0x[curSprite] - player0x)
+    if (deltaX + 4) >= 8 then goto _enemy_not_hit
+
+    ;-- need to use player facing direction to determine if Yamo is hit or not
+    if playerState & FACE_DIR <> FACE_LEFT then if deltaX > $F0 then goto _enemy_not_hit
+    if playerState & FACE_DIR =  FACE_LEFT then if deltaX < $10 then goto _enemy_not_hit
+
+        ;-- Sound FX: Enemy Hit
+        sndPos = 0 : sndEffect = 2
+        
+        ;-- knock enemy back
+        enemyState = ENEMY_KNOCK_BACK
+        if deltaX > $F0 then enemyState = enemyState | ENEMY_FACE_RIGHT
+
+        spriteStates[curSprite] = enemyState
+        spriteTimers[curSprite] = #YAMO_ATTACK_WAIT_TIME
+
+        score = score + 100
+
+_enemy_not_hit
+    return thisbank
+
+
+;=======================================================
+;--- Check if player is hit by enemy
+;-------------------------------------------------------
+
+
+CheckIfEnemyHitPlayer
+    enemyState = spriteStates[curSprite]
+
+    ;-- skip out if enemy is not attacking, player already hit, OR player is ducking
+    if enemyState & ENEMY_STATE_MASK <> ENEMY_ATTACK then goto _enemy_did_not_hit
+    if playerState & PLAYER_STATE_MASK = PLAYER_HIT then goto _enemy_did_not_hit
+    if playerState & PLAYER_STATE_MASK = PLAYER_DUCK then goto _enemy_did_not_hit
+
+    ;-- check if within range
+    if ((player0y[curSprite] - player0y) + 6) >= 12 then goto _enemy_did_not_hit
+    deltaX = (player0x[curSprite] - player0x)
+    if (deltaX + 4) >= 8 then goto _enemy_did_not_hit
+
+    ;-- need to use player facing direction to determine if hit or not
+    if playerState & FACE_DIR <> FACE_LEFT then if deltaX >= 12 then goto _enemy_did_not_hit
+    if playerState & FACE_DIR =  FACE_LEFT then if deltaX < $F4 then goto _enemy_did_not_hit
+
+        ;-- Sound FX: Player Hit
+        sndPos = 0 : sndEffect = 2
+
+        playerState = (playerState & CLEAR_PLAYER_STATE) | PLAYER_HIT
+        playerTimer = WAIT_PLAYER_STUNNED
+
+_enemy_did_not_hit
+    return thisbank
 
 
 ;=======================================================
@@ -755,6 +881,10 @@ HandleBlackNinja
     blackNinjaFrame = FRM_NINJA_STANDING
     canMove_bit0{0} = 0
 
+    ;---- check for Black Ninja being hit
+    if playerState & PLAYER_ACTION_MASK = PLAYER_PUNCH then gosub CheckForPlayerPunchEnemy thisbank
+
+    if blackNinjaState & ENEMY_STATE_MASK = ENEMY_KNOCK_BACK then goto HandleBlackNinjaKnockedBack
     if blackNinjaState & ENEMY_STATE_MASK = ENEMY_WAIT then if blackNinjaTimer = 0 then goto HandleBlackNinjaNextMove
     if blackNinjaState & ENEMY_STATE_MASK = ENEMY_RUN then goto HandleBlackNinjaRun
     if blackNinjaState & ENEMY_STATE_MASK = ENEMY_ATTACK then goto HandleBlackNinjaAttack
@@ -772,6 +902,9 @@ HandleBlackNinjaAttack
 _do_black_ninja_attack
     ;-- Is it time to attack?
     if blackNinjaTimer >= NINJA_ATTACK_TIMER then goto MoveEnemy
+
+    ;-- check if we've hit player (TODO: add timer condition?)
+    gosub CheckIfEnemyHitPlayer
 
     ;-- Figure out which attack frame to show
     temp2 = FRM_NINJA_STANDING
@@ -791,23 +924,42 @@ _do_ninja_attack_frame
 ;--  Handle when Black Ninja is ready to make next move
 
 HandleBlackNinjaNextMove
-	blackNinjaState = blackNinjaState & ENEMY_DIR_MASK;
+	blackNinjaState = blackNinjaState & ENEMY_DIR_MASK
 	if blackNinjaX < player0x then blackNinjaState = blackNinjaState | ENEMY_FACE_RIGHT
 	blackNinjaState = blackNinjaState | ENEMY_RUN
     blackNinjaTimer = NINJA_RUN_TIMER
     return
 
 
+;------------------------------------------------------------------
+;--  Handle when Black Ninja is knocked back after player attack
+
+HandleBlackNinjaKnockedBack
+    if mainTimer & 0x1 = 0 then goto MoveEnemy      ;-- only 30 fps for being knocked back
+
+    ;-- Handle jump portion of being knocked back
+	if blackNinjaTimer < HALF_JUMP_CNT then blackNinjaY = blackNinjaY - 1 : goto _done_with_ninja_in_air
+    if blackNinjaTimer < JUMP_CNT then blackNinjaY = blackNinjaY + 1
+_done_with_ninja_in_air
+
+    if blackNinjaState & FACE_DIR = FACE_RIGHT then if blackNinjaX > 0 then blackNinjaX = blackNinjaX - 1
+    if blackNinjaState & FACE_DIR <> FACE_RIGHT then if blackNinjaX < 150 then blackNinjaX = blackNinjaX + 1
+
+    if blackNinjaTimer > 0 then goto MoveEnemy
+
+    ;-- done, prep for next move
+    blackNinjaState = blackNinjaState & CLEAR_ENEMY_STATE
+    blackNinjaTimer = YAMO_WAIT_TIMER
+
+    goto MoveEnemy
+
 ;---------------------------------------------------------------
 ;--  Handle when Black Ninja is running and potentially attacks
 
 
 HandleBlackNinjaRun
-    dim deltaX = temp2
-    dim deltaY = temp3
-
-    temp2 = blackNinjaTimer & 0x7
-    blackNinjaFrame = blackNinjaRunningFrames[temp2]
+    temp3 = blackNinjaTimer & 0x7
+    blackNinjaFrame = blackNinjaRunningFrames[temp3]
 
     deltaX = blackNinjaX - player0x : deltaX = deltaX + NINJA_ATTACK_DIST
     deltaY = blackNinjaY - player0y
@@ -914,7 +1066,7 @@ InitYamo
     player2pal = COL_YAMO
 
     yamoX = 140
-    yamoY = 144
+    yamoY = 30 ;144
     yamoState = 0
     yamoTimer = YAMO_WAIT_TIMER    ;-- initial wait timer
     return
@@ -931,6 +1083,13 @@ HandleYamo
     yamoFrame = FRM_YAMO_STANDING
     canMove_bit0{0} = 0
 
+    ;---- check for Yamo being hit
+    if playerState & PLAYER_ACTION_MASK = PLAYER_PUNCH then gosub CheckForPlayerPunchEnemy thisbank
+
+
+    ;--- handle yamo state
+
+    if yamoState & ENEMY_STATE_MASK = ENEMY_KNOCK_BACK then goto HandleYamoKnockedBack
     if yamoState & ENEMY_STATE_MASK = ENEMY_WAIT then if yamoTimer = 0 then goto HandleYamoNextMove
     if yamoState & ENEMY_STATE_MASK = ENEMY_RUN then goto HandleYamoRun
     if yamoState & ENEMY_STATE_MASK = ENEMY_ATTACK then goto HandleYamoAttack
@@ -954,8 +1113,7 @@ HandleYamoNextMove
     const YAMO_ATTACK_DIST_X2 = 40
 
 HandleYamoRun
-    dim deltaX = temp2
-    dim deltaY = temp3
+
 
     temp2 = yamoTimer & 0x7
     yamoFrame = yamoRunningFrames[temp2]
@@ -1002,17 +1160,29 @@ _yamo_done_with_run_state
 	if (yamoTimer & 0x1) then canMove_bit0{0} = 0
 	goto MoveEnemy
 
-
+;--------------------------------------------------------------------
+HandleYamoKnockedBack
+    yamoFrame = FRM_YAMO_KICK
+    if mainTimer & 0x1 = 0 then goto _done_yamo_attack
+    temp4 = yamoState & FACE_LEFT : temp4 = temp4 ^ FACE_LEFT
+    goto _handle_yamo_jump
+	
 ;--------------------------------------------------------------------
 HandleYamoAttack
     yamoFrame = FRM_YAMO_KICK
     if mainTimer & 0x1 = 0 then goto _done_yamo_attack
 
+    ;-- check if we've hit player (TODO: add timer condition?)
+    gosub CheckIfEnemyHitPlayer
+
+    temp4 = yamoState & FACE_LEFT
+
+_handle_yamo_jump
     ;-- Handle jump portion of attack
 	if yamoTimer < YAMO_HALF_JUMP_CNT then yamoY = yamoY - 1 else if yamoTimer < YAMO_JUMP_CNT then yamoY = yamoY + 1
 		
 	;-- Move yamo in direction he is facing
-	if yamoState & FACE_LEFT <> 0 then goto _yamo_attack_right
+	if temp4 <> 0 then goto _yamo_attack_right
 	    if yamoX > 0 then yamoX = yamoX - 1
         goto _done_yamo_attack
 _yamo_attack_right
@@ -1109,50 +1279,56 @@ _check_lantern_bit          ;-- this should be done twice
     bumpMask = lpfBitmask[bumpBitX]
     bumpData = screenLanternsPF[bumpPF]
 
-    if bumpData & bumpMask <> 0 then writeScreenLanternsPF[bumpPF] = (bumpMask ^ 0xFF) & bumpData
+    if bumpData & bumpMask = 0 then return
+
+    writeScreenLanternsPF[bumpPF] = (bumpMask ^ 0xFF) & bumpData
+
+    ;-- play sound for collecting lantern
+    sndPos = 0 : sndEffect = 1
+    score = score + 125
 
     return
 
 
 
-
-
-
 ;--------------------------------------------------------------------------
-;--- routine for doing generic sprite movement --- (for TESTING SPRITES) ---
+;--- Sound effect engine
 ;--------------------------------------------------------------------------
-;-- check joystick direction, and move player accordingly
-;--
+;-- To play a sound, simply:
+;       set sndEffect to desired value
+;       set sndPos to 0
 
-    const BELOW_SCREEN = 188
+PlaySound
+    if sndEffect = 0 then return
+    if sndPos = 0 then sndPos = sndStartOfs[sndEffect]
 
-HandleGenericMovement
+    temp1 = sndData[sndPos]
+    AUDC0 = temp1 / 16
+    if temp1 <> 0 then sndPos = sndPos + 1
+    AUDF0 = sndData[sndPos]
+    AUDV0 = temp1 & 0xf
+    sndPos = sndPos + 1
 
-    if !joy0up then goto _skip_move_up
-    if player0y = BELOW_SCREEN then _skip_move_up
-    player0y = player0y + 1
-_skip_move_up
-
-    if !joy0down then goto _skip_move_down
-    if player0y = 0 then _skip_move_down
-    player0y = player0y - 1
-_skip_move_down
-
-    ;-----
-    ;-- horizontal movement
-
-    if !joy0right then goto _skip_move_right
-    if player0x > 150 then _skip_move_right
-    player0x = player0x + 1
-_skip_move_right
-
-    if !joy0left then goto _skip_move_left
-    if player0x = 0 then _skip_move_left
-    player0x = player0x - 1
-_skip_move_left
-
+    ;-- check if done with sound effect
+    if temp1 = 0 then sndEffect = 0 : sndPos = 0
     return
 
+    data sndStartOfs
+    0, 1, 6
+end
+
+    data sndData
+    0
+    $49, $18    ;-- collected lantern sound
+    $49, $0F
+    0
+    $89, $1F    ;-- punch
+    $89, $1C
+    0
+    $C5, $15
+    $C5, $10
+    0
+end
 
 
 
@@ -1326,6 +1502,9 @@ ct_white:               .byte _0A,_0A,_0C,_0E,_0A,_0C,_0C,_0E
 
 ct_yamo:                .byte _D6,_D6,_D6,_D6,_00,_00,_D6,_D6
                         .byte _D6,_D6,_D6,_D6,_D6,_D6,_D6,_00
+
+ct_red:                 .byte _00,_42,_30,_42,_30,_42,_30,_42
+                        .byte _30,_42,_30,_42,_30,_42,_30,_42
 
    ;echo "Color tables end at ", *
 

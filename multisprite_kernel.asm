@@ -343,6 +343,7 @@ L001D:
 	STA     WSYNC
 	LDA     #$0
 	STA     VBLANK						;--- Turn on beam
+	STA 	CXCLR						;--- clear out collisions
 	                                	
 	LDA     #<KERNEL_DISPLAY_TIME		;--  start display timer
 	STA     TIM64T
@@ -456,9 +457,9 @@ LineLoop:
 		JMP 	DoneWithAllRows
 		
 		
-		;//===================================================================
-		;//=== Handle lantern row using asymmetric kernel for PF0,PF1
-		;//           Only ladder uses PF2
+;//===================================================================
+;//=== Handle lantern row using asymmetric kernel for PF0,PF1
+;//           Only ladder uses PF2
 		
 LanternKernel:
 		CMP 	#$F0
@@ -755,42 +756,42 @@ sixdigscore
 
     sta WSYNC
     sta HMCLR               ;3  [3]
-
     lda #$01                ;2  [5]
     sta CTRLPF              ;3  [8]
-
     ldy #7                  ;2  [10]
     sty VDELP0              ;3  [13]
     sty VDELP1              ;3  [16]
-    LDA #$10                ;2  [18]
+    LDA #$40                ;2  [18]
     STA HMP1                ;3  [21]
-    LDA scorecolor          ;3  [24]
-    STA COLUP0              ;3  [27]
-    STA COLUP1              ;3  [30]
+	LDA #$30				;2	[23]
+	STA HMP0				;3  [26]
+    LDA scorecolor          ;3  [29]
+    STA COLUP0              ;3  [32]
+    STA COLUP1              ;3  [35]
     
-    LDA #$03                ;2  [32]
-    STA NUSIZ0              ;3  [35]
-    STA NUSIZ1              ;3  [38]
+    LDA #$03                ;2  [37]
+    STA NUSIZ0              ;3  [40]
 
-    STA RESP0               ;3  *41*
-    STA RESP1               ;3  *44*
+    STA RESP0               ;3  *43*
+    STA RESP1               ;3  *46*
 
-    sleep 4                 ;4  [48]
+    STA NUSIZ1              ;3  [49]
 
-    lda  (scorepointers),y  ;5  [53]
-    sta  GRP0               ;3  [56]
+    lda  (scorepointers),y  ;5  [54]
+    sta  GRP0               ;3  [57]
   ifconst pfscore
-    lda pfscorecolor        ;3  [59]
-    sta COLUPF              ;3  [62]
+    lda pfscorecolor        ;3  [60]
+    sta COLUPF              ;3  [63]
   else
-    sleep 6                 ;6  [62]
+    sleep 6                 ;6  [63]
   endif
 
-    lda  (scorepointers+8),y;5  [67]
+    lda  (scorepointers+8),y;5  [68]
 
-    sleep 3                 ;3  [70]
+    sleep 2                 ;3  [70]
     STA HMOVE               ;3  [73]  Early HMOVE
-    jmp beginscore          ;3  [76]
+	sleep 2					;2	[75]
+    jmp beginscore          ;3  [2]
 
  ;align 256
 
@@ -1021,6 +1022,7 @@ bitmapPF1:
 
 lanternColors:
 	.byte $38,$66,$DA,$44,$28,$3E,$3A,$00
+	;.byte $00,$66,$DA,$00,$36,$3E,$00,$02	;-- lanterns allowing black walls
 
 pfBitmask:
 	.byte 16,32,64,128,128,64,32,16
