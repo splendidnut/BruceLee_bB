@@ -1,0 +1,2 @@
+# -- override default basic lanugage with correct name
+*.bas linguist-language=batariBasic
