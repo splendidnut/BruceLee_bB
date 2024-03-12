@@ -145,8 +145,11 @@ DoGameRunningLogic
     goto MainLoop
 
 
+
 ;-------------------------------------------------------------------------
 ;---- define screens
+;-------------------------------------------------------------------------
+
 
     data levelBgData                    ;-- background colors for above ground
     0x05,0x07,0x07,0x07,0x07,0x07
@@ -179,57 +182,88 @@ end
 end
 
     ;--- default level row type data for mountain screens
-    const _KT_PLATFORM  = 8         ;--    8 = platform/ground
-    const _KT_RT_WALL   = 0x12      ;-- 0x12 = wall on right
-    const _KT_LR_WALL   = 0x22      ;-- 0x22 = wall on left & right
-    const _KT_LANTERN   = 0x80
-    const _KT_MOUNTAINS = 0xF0      ;-- 0xF0 = mountains / decorative bg
+    const KT_PLATFORM  = 8         ;--    8 = platform/ground
+    const KT_RT_WALL   = 0x12      ;-- 0x12 = wall on right
+    const KT_LR_WALL   = 0x22      ;-- 0x22 = wall on left & right
+    const KT_ASYM_PLAT = 0x40      ;-- 0x40 = asymmetric platform kernel
+    const KT_LANTERN   = 0x80      ;-- 0x80 = lantern kernel (PF0, PF1)
+    const KT_LANTERN2  = 0xC0      ;-- 0xC0 = lantern kernel (PF1, PF2)
+    const KT_MOUNTAINS = 0xF0      ;-- 0xF0 = mountains / decorative bg
 
     data levelRowTypes
-    8,_KT_LR_WALL,_KT_LR_WALL,_KT_LR_WALL,_KT_LR_WALL,_KT_LANTERN
-    8,0,0,0,0,_KT_LANTERN
+    8,KT_LR_WALL,KT_LR_WALL,KT_LR_WALL,KT_LR_WALL,KT_LANTERN
+    8,0,0,0,0,KT_LANTERN
     8,0,0,0,0
-    0,_KT_MOUNTAINS,0                    
+    0,KT_MOUNTAINS,0                    
 end
 
-    data screen_lanterns
-    0,    0, 0x10, 0x20     ;-- screen 1 lanterns
-    0x40, 0, 0x05, 0x20
+;    data screen_lanterns
+;    0,    0, 0x10, 0x20     ;-- screen 1 lanterns
+;    0x40, 0, 0x05, 0x20
 
-    0, 0x80, 0x80, 0        ;-- screen 2 lanterns
-    0, 0x41, 0x41, 0    
+;    0, 0x80, 0x80, 0        ;-- screen 2 lanterns
+;    0, 0x41, 0x41, 0    
 
-    0, 0x11, 0x11, 0             ;-- screen 3 lanterns
-    0, 0x11, 0x01, 0
+;    0x11, 0,    0x04, 0x11  ;-- screen 3 lanterns
+;    0x11, 0x10, 0x10, 0x01
+;end
+
+;    data lanternDataStartOfs
+;    0, 8, 16
+;end
+
+    data screen_lanternPos      ;-- high nibble = byte, low nibble = bit position
+    0x24, 0x35, 0x46, 0x60, 0x62, 0x75
+    0x17, 0x27, 0x56, 0x51, 0x66, 0x61
+    0x00, 0x04, 0x22, 0x30, 0x34, 0x40, 0x44, 0x54, 0x64, 0x70
 end
 
-    data lanternDataStartOfs
-    0, 8, 16
+    data screenLanternCount
+    6, 6, 10
 end
+    data screenLanternDataOfs
+    0, 6, 12
+end
+    data lanternBit
+    1,2,4,8,16,32,64,128
+end
+
 
 LoadLevel
     dim levelDataOfs = temp2
-    dim lanternDataOfs = temp3
     dim highWallStyle = temp4
 
     ;---- clear superchip RAM
-    for i = 0 to 127
-        writeScreenData[i] = 0
-    next i
+    for temp1 = 0 to 127
+        writeScreenData[temp1] = 0
+    next temp1
 
-    ;-- set data offsets base on level number    
+    ;-- set level data offset base on level number    
     levelDataOfs = levelDataStartOfs[currentScreen]
-    lanternDataOfs = lanternDataStartOfs[currentScreen]
 
-
+    ;--- store screen data in SuperchipRAM
     for temp1 = 0 to 20
 		writeScreenData[temp1]	  = levelData[levelDataOfs] | 0x7
 		writeScreenBgColor[temp1] = levelBgData[temp1]
         writeScreenKernelType[temp1] = levelRowTypes[temp1]
         levelDataOfs = levelDataOfs + 1
 	next
-    for temp1 = 0 to 8
-        writeScreenLanternsPF[temp1] = screen_lanterns[lanternDataOfs]
+
+    ;--- draw lanterns into SuperchipRAM
+LoadLanterns
+    dim lanternCount = temp2
+    dim lanternDataOfs = temp3
+    dim lanternData = temp4
+    dim lanternBytePos = temp5
+
+    lanternDataOfs = screenLanternDataOfs[currentScreen]
+    lanternCount = screenLanternCount[currentScreen]
+    for temp1 = 1 to lanternCount
+        lanternData = screen_lanternPos[lanternDataOfs]
+        lanternBytePos = lanternData / 16
+        lanternData = lanternData & 7
+        lanternData = lanternBit[lanternData]
+        writeScreenLanternsPF[lanternBytePos] = screenLanternsPF[lanternBytePos] | lanternData
         lanternDataOfs = lanternDataOfs + 1
     next
 
@@ -242,8 +276,8 @@ LoadLevel
 
     ;-- do high wall    
     highWallStyle = 0
-    if currentScreen = 1 then highWallStyle = _KT_RT_WALL  ;-- screen 1 has higher wall only on right
-    if currentScreen = 2 then highWallStyle = _KT_LR_WALL
+    if currentScreen = 1 then highWallStyle = KT_RT_WALL  ;-- screen 1 has higher wall only on right
+    if currentScreen = 2 then highWallStyle = KT_LR_WALL
 
     writeScreenKernelType[7]  = highWallStyle
     writeScreenKernelType[8]  = highWallStyle
@@ -259,43 +293,62 @@ LoadLevel
 _skip_asym_rows
 
     if currentScreen <> 2 then _skip_screen2_block
-    writeScreenKernelType[13]  = _KT_RT_WALL
-    writeScreenKernelType[14]  = _KT_RT_WALL
-    writeScreenKernelType[15]  = _KT_RT_WALL
-    writeScreenKernelType[16]  = _KT_RT_WALL
+    writeScreenKernelType[13]  = KT_RT_WALL
+    writeScreenKernelType[14]  = KT_RT_WALL
+    writeScreenKernelType[15]  = KT_RT_WALL
+    writeScreenKernelType[16]  = KT_RT_WALL
+
+    writeScreenKernelType[11]  = KT_LANTERN2
+    writeScreenKernelType[5]   = KT_LANTERN2
 _skip_screen2_block
 
-    return
+    return thisbank
 
+
+;-------------------------------------------------------------------------
+;-- Check all lanterns player collected
+
+CheckCollectedLanterns
+    dim lanternsOnScreen = temp2
+
+    ;----  scan for any lanterns on screen
+    lanternsOnScreen = 0
+    for temp1 = 1 to 8
+        lanternsOnScreen = screenLanternsPF[temp1] | lanternsOnScreen
+    next
+
+    if lanternsOnScreen <> 0 then return thisbank
+
+    ;-- play sound for collecting ALL lanterns on screen
+    sndPos = 0 : sndEffect = 4
+    score = score + 2000
+    return thisbank
+
+
+;-------------------------------------------------------------------------
+;--- handle switching screens
 
 nextScreenRight
     if currentScreen = 2 then return
+    gosub CheckCollectedLanterns
     currentScreen = currentScreen + 1
     player0x = 0
     gameState = GAME_SCREEN_INIT
-    return
+    return thisbank
 
 
 nextScreenLeft
     if currentScreen = 0 then return
+    gosub CheckCollectedLanterns
     currentScreen = currentScreen - 1
     player0x = 149
     gameState = GAME_SCREEN_INIT
-    return
+    return thisbank
 
 
 
 ;-----------------------------------------------------------------------------------
 ;-------------- Constants for Player
-
-    ;--- player fighting actions
-    const PLAYER_ACTION_MASK        = 0x03
-    const PLAYER_CLEAR_ACTION_MASK  = 0xFC
-    const PLAYER_NORMAL 	        = 0x00
-    const PLAYER_PUNCH  	        = 0x01
-    const PLAYER_KICK   	        = 0x02
-    const PLAYER_KICK_AND_JUMP      = 0x03
-    const PLAYER_REST_ACTION        = 0x03  ;//-- when player action is done, will sit here until button released.
 
     ;--- player movement state
     const PLAYER_STATE_MASK  = 0xF0
@@ -307,6 +360,16 @@ nextScreenLeft
     const PLAYER_CLIMB  	  = 0xC0
     const CLEAR_PLAYER_FALL   = 0xBF
     const CLEAR_PLAYER_CLIMB  = 0x3F
+
+    ;--- player fighting actions
+    const PLAYER_ACTION_MASK        = 0x03
+    const PLAYER_CLEAR_ACTION_MASK  = 0xFC
+    const PLAYER_NORMAL 	        = 0x00
+    const PLAYER_PUNCH  	        = 0x01
+    const PLAYER_KICK               = 0x02
+    const PLAYER_KICK_AND_JUMP      = PLAYER_KICK | PLAYER_JUMP 
+    const PLAYER_REST_ACTION        = 0x03  ;//-- when player action is done, will sit here until button released.
+
 
     ;--- timer values
     const JUMP_COOLDOWN = 30
@@ -321,8 +384,8 @@ nextScreenLeft
 
     const FACE_RIGHT = 0xF7		;//-- AND mask
     const FACE_LEFT  = 0x08		;//--  OR mask
-    const FACE_MASK  = 0xF7
-    const FACE_DIR   = 0x08
+    const DIR_MASK   = 0xF7
+    const DIR_BIT    = 0x08
 
 ;---------------------------------------------------------------------------------
 ;--  Handle player input, state & movement
@@ -388,7 +451,7 @@ HandlePlayerClimbState
 
     ;--- handle switching player facing direction
     ;---   to create the two climbing frames from a single graphics frame
-    playerState = playerState & FACE_MASK
+    playerState = playerState & DIR_MASK
     if player0y & 0x8 = 0 then playerState = playerState | FACE_LEFT
     goto _player_handle_action_timer
 
@@ -437,8 +500,8 @@ _skip_player_jump_check
         if !isMoving_bit1{1} then playerState = playerState | PLAYER_PUNCH : sndPos = 0 : sndEffect = 2
         if isMoving_bit1{1} then playerState = playerState | PLAYER_KICK_AND_JUMP : playerTimer = PLAYER_MAX_KICK_JUMP
        
-        if (playerState & FACE_DIR) = FACE_LEFT then if player0x > 4 then player0x = player0x - 2
-        if (playerState & FACE_DIR) <> FACE_LEFT then if player0x < 150 then player0x = player0x + 2
+        if (playerState & DIR_BIT) = FACE_LEFT then if player0x > 4 then player0x = player0x - 2
+        if (playerState & DIR_BIT) <> FACE_LEFT then if player0x < 150 then player0x = player0x + 2
 
         actionTimer = KICK_TIME
         
@@ -664,14 +727,7 @@ SetPlayerFrame
 	const ENEMY_FALL        = 0x03
     const ENEMY_KNOCK_BACK  = 0x06
 
-;//--- TODO: need to INVERT facing direction 
-;//          until Enemy Graphics has been fixed to match player
-;//
-    const ENEMY_DIR_MASK   = $F7
-    const ENEMY_DIR_BIT    = $08
-    const ENEMY_FACE_RIGHT = $08		;//-- OR mask
-    const ENEMY_FACE_LEFT  = $F7		;//-- AND mask
-
+    ;------------------------------------
     const SN_BLACK_NINJA = 1
     const SN_YAMO = 2
 
@@ -697,7 +753,7 @@ MoveEnemy
     enemyState = spriteStates[curSprite]
 
     if !canMove_bit0{0} then goto _done_move_enemy_lr
-	if enemyState & ENEMY_DIR_BIT <> ENEMY_FACE_RIGHT then goto _move_enemy_left
+	if enemyState & DIR_BIT = FACE_LEFT then goto _move_enemy_left
 	    if player0x[curSprite] < 150 then player0x[curSprite] = player0x[curSprite] + 1
 	    goto _done_move_enemy_lr
 _move_enemy_left
@@ -716,13 +772,13 @@ _done_move_enemy_lr
             if enemyState & ENEMY_STATE_MASK = ENEMY_ATTACK then goto _enemy_on_ground    
 _not_yamo_for_gravity
 
-        enemyState = enemyState & ENEMY_DIR_MASK : enemyState = enemyState | ENEMY_FALL
+        enemyState = enemyState & DIR_MASK : enemyState = enemyState | ENEMY_FALL
         if mainTimer & 0x1 = 1 then player0y[curSprite] = player0y[curSprite] - 1
         goto _done_enemy_move
 
 _enemy_on_ground    ;-- also YAMO in JUMP ATTACK / KNOCK BACK state
         if enemyState & ENEMY_STATE_MASK <> ENEMY_FALL then goto _done_enemy_move
-        enemyState = enemyState & ENEMY_DIR_BIT : enemyState = enemyState | ENEMY_WAIT
+        enemyState = enemyState & DIR_BIT : enemyState = enemyState | ENEMY_WAIT
         spriteTimers[curSprite] = #ENEMY_FALL_WAIT_TIMER
 
 _done_enemy_move
@@ -736,7 +792,7 @@ _done_enemy_move
 ;-- Player / Enemy Interactions
 ;-------------------------------------------------------
 
-CheckForPlayerPunchEnemy
+CheckForPlayerHitEnemy
     enemyState = spriteStates[curSprite]
 
     if enemyState & ENEMY_STATE_MASK = ENEMY_KNOCK_BACK then goto _enemy_not_hit
@@ -746,20 +802,21 @@ CheckForPlayerPunchEnemy
     if (deltaX + 4) >= 8 then goto _enemy_not_hit
 
     ;-- need to use player facing direction to determine if Yamo is hit or not
-    if playerState & FACE_DIR <> FACE_LEFT then if deltaX > $F0 then goto _enemy_not_hit
-    if playerState & FACE_DIR =  FACE_LEFT then if deltaX < $10 then goto _enemy_not_hit
+    if playerState & DIR_BIT <> FACE_LEFT then if deltaX > $F0 then goto _enemy_not_hit
+    if playerState & DIR_BIT =  FACE_LEFT then if deltaX < $10 then goto _enemy_not_hit
 
         ;-- Sound FX: Enemy Hit
         sndPos = 0 : sndEffect = 2
         
         ;-- knock enemy back
         enemyState = ENEMY_KNOCK_BACK
-        if deltaX > $F0 then enemyState = enemyState | ENEMY_FACE_RIGHT
+        if deltaX < $10 then enemyState = enemyState | FACE_LEFT
 
         spriteStates[curSprite] = enemyState
         spriteTimers[curSprite] = #YAMO_ATTACK_WAIT_TIME
-
-        score = score + 100
+        
+        ;---- score the move according to the player action
+        if playerState & PLAYER_ACTION_MASK = PLAYER_PUNCH then score = score + 100 else score = score + 75
 
 _enemy_not_hit
     return thisbank
@@ -784,8 +841,8 @@ CheckIfEnemyHitPlayer
     if (deltaX + 4) >= 8 then goto _enemy_did_not_hit
 
     ;-- need to use player facing direction to determine if hit or not
-    if playerState & FACE_DIR <> FACE_LEFT then if deltaX >= 12 then goto _enemy_did_not_hit
-    if playerState & FACE_DIR =  FACE_LEFT then if deltaX < $F4 then goto _enemy_did_not_hit
+    if playerState & DIR_BIT <> FACE_LEFT then if deltaX >= 12 then goto _enemy_did_not_hit
+    if playerState & DIR_BIT =  FACE_LEFT then if deltaX < $F4 then goto _enemy_did_not_hit
 
         ;-- Sound FX: Player Hit
         sndPos = 0 : sndEffect = 2
@@ -882,7 +939,8 @@ HandleBlackNinja
     canMove_bit0{0} = 0
 
     ;---- check for Black Ninja being hit
-    if playerState & PLAYER_ACTION_MASK = PLAYER_PUNCH then gosub CheckForPlayerPunchEnemy thisbank
+    temp2 = playerState & PLAYER_ACTION_MASK
+    if temp2 = PLAYER_PUNCH || temp2 = PLAYER_KICK then gosub CheckForPlayerHitEnemy thisbank
 
     if blackNinjaState & ENEMY_STATE_MASK = ENEMY_KNOCK_BACK then goto HandleBlackNinjaKnockedBack
     if blackNinjaState & ENEMY_STATE_MASK = ENEMY_WAIT then if blackNinjaTimer = 0 then goto HandleBlackNinjaNextMove
@@ -924,8 +982,8 @@ _do_ninja_attack_frame
 ;--  Handle when Black Ninja is ready to make next move
 
 HandleBlackNinjaNextMove
-	blackNinjaState = blackNinjaState & ENEMY_DIR_MASK
-	if blackNinjaX < player0x then blackNinjaState = blackNinjaState | ENEMY_FACE_RIGHT
+	blackNinjaState = blackNinjaState & DIR_MASK
+	if blackNinjaX >= player0x then blackNinjaState = blackNinjaState | FACE_LEFT
 	blackNinjaState = blackNinjaState | ENEMY_RUN
     blackNinjaTimer = NINJA_RUN_TIMER
     return
@@ -942,8 +1000,8 @@ HandleBlackNinjaKnockedBack
     if blackNinjaTimer < JUMP_CNT then blackNinjaY = blackNinjaY + 1
 _done_with_ninja_in_air
 
-    if blackNinjaState & FACE_DIR = FACE_RIGHT then if blackNinjaX > 0 then blackNinjaX = blackNinjaX - 1
-    if blackNinjaState & FACE_DIR <> FACE_RIGHT then if blackNinjaX < 150 then blackNinjaX = blackNinjaX + 1
+    if blackNinjaState & DIR_BIT <> FACE_LEFT then if blackNinjaX > 0 then blackNinjaX = blackNinjaX - 1
+    if blackNinjaState & DIR_BIT = FACE_LEFT  then if blackNinjaX < 150 then blackNinjaX = blackNinjaX + 1
 
     if blackNinjaTimer > 0 then goto MoveEnemy
 
@@ -1084,7 +1142,8 @@ HandleYamo
     canMove_bit0{0} = 0
 
     ;---- check for Yamo being hit
-    if playerState & PLAYER_ACTION_MASK = PLAYER_PUNCH then gosub CheckForPlayerPunchEnemy thisbank
+    temp2 = playerState & PLAYER_ACTION_MASK
+    if temp2 = PLAYER_PUNCH || temp2 = PLAYER_KICK then gosub CheckForPlayerHitEnemy thisbank
 
 
     ;--- handle yamo state
@@ -1099,8 +1158,8 @@ HandleYamo
 ;--  Handle when Yamo is ready to make next move
 
 HandleYamoNextMove
-	yamoState = yamoState & ENEMY_DIR_MASK;
-	if yamoX < player0x then yamoState = yamoState | ENEMY_FACE_RIGHT
+	yamoState = yamoState & DIR_MASK;
+	if yamoX >= player0x then yamoState = yamoState | FACE_LEFT
 	yamoState = yamoState | ENEMY_RUN
     yamoTimer = YAMO_RUN_TIMER
     return
@@ -1175,14 +1234,14 @@ HandleYamoAttack
     ;-- check if we've hit player (TODO: add timer condition?)
     gosub CheckIfEnemyHitPlayer
 
-    temp4 = yamoState & FACE_LEFT
+    temp4 = yamoState & DIR_BIT   ; FACE_LEFT
 
 _handle_yamo_jump
     ;-- Handle jump portion of attack
 	if yamoTimer < YAMO_HALF_JUMP_CNT then yamoY = yamoY - 1 else if yamoTimer < YAMO_JUMP_CNT then yamoY = yamoY + 1
 		
 	;-- Move yamo in direction he is facing
-	if temp4 <> 0 then goto _yamo_attack_right
+	if temp4 = 0 then goto _yamo_attack_right
 	    if yamoX > 0 then yamoX = yamoX - 1
         goto _done_yamo_attack
 _yamo_attack_right
@@ -1208,7 +1267,8 @@ _done_yamo_attack
  *  NOTE:  Currently only handles bottom row of lanterns
  */
     data lantBumpPfTbl          ;-- this is which lantern byte to read (middle of screen doesn't have any)
-    0,1,1,-1,-1,-1,-1,2,2,3
+    0,1,1,-1,-1,-1,-1,2,2,3     ;-- PF0/PF1
+    -1,0,0,1,1,2,2,3,3,-1       ;-- PF1/PF2
 end
     data lpfBitmask             ;-- this is which lantern bit to read
 	16,32,64,128,128,64,32,16
@@ -1219,10 +1279,10 @@ end
     ;--    Data Row #,
     ;--    Min Y Bound,
     ;--    Max Y Bound,
-    ;--    .padding
+    ;--    Screen Row
     data lanternPos
-    4, 0x24, 0x28, 0
-    0, 0x54, 0x58, 0
+    4, 0x24, 0x28, 5
+    0, 0x54, 0x58, 11
     0xFF
 end
 
@@ -1234,6 +1294,7 @@ CheckLanterns
     dim bumpBitX = temp3    ;-- which bit to check
     dim bumpPF = temp4      ;-- which PF byte to check
     dim bumpData = temp5
+    dim bumpRowOfs = temp5  ;-- offset into bump byte table (based on kernel type for row)
     dim bumpMask = temp6
 
     ;--- make sure player is hitting lantern row
@@ -1261,6 +1322,10 @@ _next_lantern_row
     ;--- in that row is being hit
 
 _found_lantern_row
+    lanternIdx = lanternIdx + 1
+    bumpRowOfs = lanternPos[lanternIdx]
+    if screenKernelType[bumpRowOfs] >= 0xC0 then bumpRowOfs = 10 else bumpRowOfs = 0
+
     bumpX = player0x + 1
     if playerState & FACE_LEFT = FACE_LEFT then bumpX = bumpX - 3
 
@@ -1269,7 +1334,7 @@ _check_lantern_bit          ;-- this should be done twice
     bumpBitX = bumpX / 4
 
     ;-- figure out which PF byte to check
-    bumpPF = bumpBitX / 4
+    bumpPF = (bumpBitX / 4) + bumpRowOfs ;--- +10 if PF1/PF2 type of lantern row
     bumpPF = lantBumpPfTbl[bumpPF]
 
     if bumpPF >= 0x80 then return  ;-- negative number means no byte to check
@@ -1314,7 +1379,7 @@ PlaySound
     return
 
     data sndStartOfs
-    0, 1, 6
+    0, 1, 6, 0xB, 0x10
 end
 
     data sndData
@@ -1328,6 +1393,13 @@ end
     $C5, $15
     $C5, $10
     0
+    $49, $18    ;-- screen cleared
+    $49, $18
+    $49, $16
+    $49, $12
+    $49, $18
+    $49, $0F
+    0, 0
 end
 
 
@@ -1463,15 +1535,16 @@ end
       MAC PAD_BB_SPRITE_DATA
 .SPRITE_HEIGHT  SET {1}
       if	(<*) > (<(*+.SPRITE_HEIGHT))
-      repeat	($100-<*)
-      .byte	0
-      repend
+        ;align 256
+      ;repeat	($100-<*)
+      ;.byte	0
+      ;repend
       endif
-      if (<*) < 90
-	   repeat (90-<*)
-	   .byte 0
-	   repend
-	   endif
+      ;if (<*) < 90
+	  ; repeat (90-<*)
+	  ; .byte 0
+	  ; repend
+	  ; endif
    ENDM
 
 ;-----------------------------------------------------------------------------------
@@ -1480,7 +1553,7 @@ end
 ;-- These tables are accessed using the COLUx variable from each sprite as an index
 ;-- For each row in this table, the first color is the bottom color of the sprite, moving up towards the top
 
-    PAD_BB_SPRITE_DATA 1
+    PAD_BB_SPRITE_DATA 128
 
     ;echo "Sprite Color tables start at ", *
 
@@ -1537,6 +1610,9 @@ end
     0
 end
 
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Running1
     0
     %10001000
@@ -1558,7 +1634,9 @@ end
     0
 end
 
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Running2
     0
     %00110000
@@ -1580,7 +1658,9 @@ end
     0
 end
 
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Running3
     0
     %00110000
@@ -1617,7 +1697,9 @@ const char bruceGfx[] = {
 	0x30,0x2C,0x38,0x18,0x38,0x38,0x38,0x3C,
 	0x26,0x34,0x3C,0x38,0x18,0x1C,0x3C,0,
 	*/
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Climbing
     0
     %01000000
@@ -1645,6 +1727,9 @@ end
 	0x64,0xF6,0xBF,0x9D,0x19,0x19,0x3C,0,
 */
 
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Jump_Kick
     0
     %00000000
@@ -1675,7 +1760,9 @@ end
 	0x68,0x49,0x7F,0x70,0x30,0x38,0x78,0,
 	*/
 
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Punching
     0
     %01100000
@@ -1699,7 +1786,9 @@ end
 
 
     ;--- bruce lee ducking frames
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Ducking1
     0
     %11000110
@@ -1721,6 +1810,9 @@ end
     0
 end
 
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Ducking2
     0
 
@@ -1744,6 +1836,9 @@ end
     0
 end
 
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
     data _Bruce_Falling
     0
     %01100000
@@ -1780,22 +1875,22 @@ end
   data _Ninja_Running1
     0
     %00100100
-    %01100100
-    %01001100
-    %01101000
-    %00111000
-    %00010000
-    %10111000
-    %11111100
+    %00100110
+    %00110010
+    %00010110
+    %00011100
+    %00001000
+    %00011101
+    %00111111
 
     %01111110
-    %00011010
-    %00111010
-    %00001010
-    %00110010
-    %00000010
+    %01011000
+    %01011100
+    %01010000
+    %01001100
+    %01000000
     %11111111
-    %00000100
+    %00100000
     0
 end
 
@@ -1804,26 +1899,28 @@ end
 	0x88,0x8C,0xC4,0x6C,0x28,0x10,0xB8,0xFC,
 	0x7E,0x1A,0x3A,0x0A,0x32,0x02,0xFF,0x04,
 */
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
   data _Ninja_Running2
     0
-    %10001000
-    %10001100
-    %11000100
-    %01101100
-    %00101000
-    %00010000
-    %10111000
-    %11111100
+    %00010001
+    %00110001
+    %00100011
+    %00110110
+    %00010100
+    %00001000
+    %00011101
+    %00111111
 
     %01111110
-    %00011010
-    %00111010
-    %00001010
-    %00110010
-    %00000010
+    %01011000
+    %01011100
+    %01010000
+    %01001100
+    %01000000
     %11111111
-    %00000100
+    %00100000
     0
 end
 
@@ -1835,26 +1932,28 @@ end
 */
 
 
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
   data _Ninja_Running3
     0
-    %00110000
-    %01100000
-    %01110000
-    %00111000
-    %00101000
-    %00010000
-    %10111000
-    %11111100
+    %00001100
+    %00000110
+    %00001110
+    %00011100
+    %00010100
+    %00001000
+    %00011101
+    %00111111
 
     %01111110
-    %00011010
-    %00111010
-    %00001010
-    %00110010
-    %00000010
+    %01011000
+    %01011100
+    %01010000
+    %01001100
+    %01000000
     %11111111
-    %00000100
+    %00100000
     0
 end
 
@@ -1863,86 +1962,100 @@ end
 	0x30,0x2C,0x38,0x18,0x38,0x10,0xB8,0xFC,
 	0x7E,0x1A,0x3A,0x0A,0x32,0x02,0xFF,0x04,
 */
-
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
   data _Ninja_Running4
     0
-    %00110000
-    %00101100
-    %00111000
-    %00011000
-    %00111000
-    %00010000
-    %10111000
-    %11111100
-
-    %01111110
-    %00011010
-    %00111010
-    %00001010
-    %00110010
-    %00000010
-    %11111111
-    %00000100
-    0
-end
-
-  data _Ninja_Attack1
-    0
-    %10001000
-    %10001100
-    %11000100
-    %01101100
-    %00101000
-    %00010000
-    %10111000
-    %11111100
-
-    %01111110
-    %00011010
-    %00111010
-    %00001010
-    %00110011
-    %00001110
-    %11110000
-    0
-end
-
-  data _Ninja_Attack2
-    0
-    %00110000
-    %01100000
-    %01110000
-    %00111000
-    %00101000
-    %01010000
-    %01111000
-    %01111100
-    %01111110
-    %00011010
-    %00111010
-    %00001011
-    %00110011
-    %00000100
-    %00001000
-    %00010000
-    0
-end
-
-  data _Ninja_Attack3
-    0
-    %00101100
+    %00001100
+    %00110100
+    %00011100
     %00011000
     %00011100
-    %00001110
-    %00001010
-    %00000110
-    %00001111
+    %00001000
+    %00011101
     %00111111
-    %11110110
-    %11000110
-    %00001110
-    %00000010
+
+    %01111110
+    %01011000
+    %01011100
+    %01010000
+    %01001100
+    %01000000
+    %11111111
+    %00100000
+    0
+end
+
+
+    asm
+    PAD_BB_SPRITE_DATA 17
+end
+  data _Ninja_Attack1
+    0
+    %00010001
+    %00110001
+    %00100011
+    %00110110
+    %00010100
+    %00001000
+    %00011101
+    %00111111
+
+    %01111110
+    %01011000
+    %01011100
+    %01010000
+    %11001100
+    %01110000
+    %00001111
+    0
+end
+
+    asm
+    PAD_BB_SPRITE_DATA 17
+end
+  data _Ninja_Attack2
+    0
     %00001100
+    %00000110
+    %00001110
+    %00011100
+    %00010100
+    %00001010
+    %00011110
+    %00111110
+
+    %01111110
+    %01011000
+    %01011100
+    %11010000
+    %11001100
+    %00100000
+    %00010000
+    %00001000
+    0
+end
+
+    asm
+    PAD_BB_SPRITE_DATA 17
+end
+  data _Ninja_Attack3
+    0
+    %00110100
+    %00011000
+    %00111000
+    %01110000
+    %01010000
+    %01100000
+    %11110000
+    %11111100
+
+    %01101111
+    %01100011
+    %01110000
+    %01000000
+    %00110000
     0
     0
     0
@@ -1964,83 +2077,94 @@ end
 	0x78,0x7C,0x38,0x3C,0x3E,0x36,0x3C,0x7C,
 	0,*/
 	
+   asm
+    PAD_BB_SPRITE_DATA 16
+end
   data _Yamo_Running1
     0
-    %01100010
-    %00110001
-    %00111110
+    %01000110
+    %10001100
+    %01111100
     %00111100
-    %10111100
+    %00111101
     %10111101
-    %11111101
-    %01111101
-    %00111111
+    %10111111
+    %10111110
+
+    %11111100
     %01111110
-    %00111000
-    %01111000
-    %11111000
-    %11011000
-    %01111000
-    %00111110
+    %00011100
+    %00011110    
+    %00011111
+    %00011011
+    %00011110
+    %01111100    
 end
 
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
   data _Yamo_Running2
     0
-    %00110110
-    %00010010
+    %01101100
+    %01001000
     %00111100
     %00111100
-    %10111100
+    %00111101
     %10111101
-    %11111101
-    %01111101
-    %00111111
+    %10111111
+    %10111110
+    %11111100
     %01111110
-    %00111000
-    %01111000
-    %11111000
-    %11011000
-    %01111000
-    %00111110
+    %00011100
+    %00011110
+    %00011111
+    %00011011
+    %00011110
+    %01111100
 end
 
+    asm
+    PAD_BB_SPRITE_DATA 16
+end
   data _Yamo_Running3
     0
-    %01001100
-    %10100100
+    %00110010
+    %00100101
     %00111100
     %00111100
-    %10111100
+    %00111101
     %10111101
-    %11111101
-    %01111101
-    %00111111
+    %10111111
+    %10111110
+    %11111100
     %01111110
-    %00111000
-    %01111000
-    %11111000
-    %11011000
-    %01111000
-    %00111110
+    %00011100
+    %00011110
+    %00011111
+    %00011011
+    %00011110
+    %01111100
 end
 
   data _Yamo_Kick
     0
-    %00011100
-    %00000110
-    %11111110
-    %10011110
-    %00011110
-    %01011110
+    %00111000
+    %01100000
+    %01111111
+    %01111001
+    %01111000
+    %01111010
     %01111110
+    %01111100
+    %01111000
+    %01111100
+    %00111000
+    %00111100
     %00111110
-    %00011110
-    %00111110
-    %00011100
+    %00110110
     %00111100
     %01111100
-    %01101100
-    %00111100
-    %00111110
+    0
 end
 

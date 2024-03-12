@@ -8,45 +8,47 @@ objectx     = $81
 player0x    = objectx
 player1x    = objectx + 1
 player2x    = objectx + 2
+player3x    = objectx + 3
 
-missile0x   = objectx + 3
-missile1x   = objectx + 4
-ballx       = objectx + 5
+missile0x   = objectx + 4
+missile1x   = objectx + 5
+ballx       = objectx + 6
 
-objecty     = $87
+objecty     = $88
 
 player0y    = objecty
 player1y    = objecty + 1
 player2y    = objecty + 2
+player3y    = objecty + 3
 
-missile0y   = objecty + 3
-missile1y   = objecty + 4
-bally       = objecty + 5
+missile0y   = objecty + 4
+missile1y   = objecty + 5
+bally       = objecty + 6
 
-NewNUSIZ    = $8D
-_NUSIZ1     = NewNUSIZ
-NUSIZ2      = NewNUSIZ + 1
-
-player0pal  = $8F
-_COLUP0     = $8F
-NewCOLUP1   = $90
+player0pal  = $90
+_COLUP0     = $90
+NewCOLUP1   = $91
 player1pal  = NewCOLUP1
 player2pal  = NewCOLUP1 + 1
+player3pal  = NewCOLUP1 + 2
 
 
-player0pointer = $92
+player0pointer = $94
 player0pointerlo = player0pointer
 player0pointerhi = player0pointer + 1
 
-player1pointerlo = $94
-player1pointerhi = $95
-player2pointerlo = $96
-player2pointerhi = $97
+player1pointerlo = $96
+player1pointerhi = $97
+player2pointerlo = $98
+player2pointerhi = $99
+player3pointerlo = $9A
+player3pointerhi = $9B
 
-player0height = $98
-spriteheight = $99 ; heights of multiplexed player sprite
-player1height = $9A
-player2height = $9B
+spriteheight = $9C ; heights of multiplexed player sprite
+player0height = $9C
+player1height = $9D
+player2height = $9E
+player3height = $9F
 
 
 
@@ -58,24 +60,16 @@ lives           = $B3
 pfscore1        = $B2       ;--- use playfield in score area
 pfscore2        = $B3
 
-aux3 = $B0
-aux4 = $B1
-aux5 = $B2
-aux6 = $B3
-
 score       = $B4  ;+B5,B6
 scorecolor  = $B7
 rand        = $B8
 
-;playfieldpos  = $B9       ;--- used for scrolling
-;pfheight      = $BA       ;-- define height of playfield blocks
-
-; playfield is now a pointer to graphics
-;playfield       = $BC
-;PF1pointer      = $BC
-;PF1pointerHi    = PF1pointer + 1
-;PF2pointer      = $BE
-;PF2pointerHi    = PF2pointer + 1
+aux0 = $BA
+aux1 = $BB
+aux2 = $BC
+aux3 = $BD
+aux4 = $BE
+aux5 = $BF
 
 ;---------------------------------------------------
 ;--- variables for screen
@@ -88,8 +82,9 @@ rand        = $B8
 ;--   bit 4/5 - block wall size (nusiz1)
 ;--   bit 6/7 - kernel type:
 ;--      00 = regular
-;--      40 = platforms
-;--      80 = lanterns
+;--      40 = asymmetric platforms
+;--      80 = lanterns using PF0 + PF1
+;--      C0 = lanterns using PF1 + PF2
 ;--      F0 = background patterns (ex: mountains)
 
 screenData           = $F080  ; 80..97

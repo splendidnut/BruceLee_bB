@@ -1,11 +1,43 @@
 BruceLee 2600
 
 TODO:
-  - initial enemy positions per level?
-  - basic sounds
-  - player/enemy collisions
-  - enemy/world interactions
-  - scoring
+  - handle enemy spawing
+    - multiple spawn points per screen?
+  - player hit counter + lives
+  - player controlled Yamo
+  - improve player/enemy interactions
+    - fix collision boxes
+    - handle different fight scenarios
+    - figure out best way to balance attacks
+  - add enemy/world interactions
+    - Yamo needs abilty to find and climb ladders
+  - add enemy/enemy interactions
+    - attacks that miss player but hit other enemy
+
+  - lanterns
+     - need to keep track of lanterns taken on a screen
+     - need to keep track of which screens have been cleared
+
+  - finish first area (village)
+     - collecting all lanterns should open passage way
+          on screen 2 to allow player to proceed to garden terrace area
+
+  - more screens
+     - (3) blue + green garden terrace area
+     - (3) orange/brown underground
+     - (6) castle entry + inside screens
+     - (3) screens leading to boss
+          - electrified walkway
+          - tower
+          - spider room
+     - boss screen
+     - victory screen
+     - title screen
+
+  - add more scoring
+  - more basic sounds
+  - music
+  - PAL60 support (just need to fix up colors)
 
 IMPLEMENTED:
   - basic sounds
@@ -13,8 +45,10 @@ IMPLEMENTED:
     - punch
   - allow blocking walls to affect player properly
   - basic player/enemy collisions
-    - player can punch both yamo and the black ninja, and knock them back
+    - player can attack both yamo and the black ninja, and knock them back
     - enemies can hurt player
   - scoring
     - lanterns (125 pts)
     - punching yamo/ninja (100 pts)
+    - kicking yamo/ninja (75 pts)
+    - collecting all lanterns on a screen (2000 pts)

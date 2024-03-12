@@ -462,8 +462,10 @@ LineLoop:
 ;//           Only ladder uses PF2
 		
 LanternKernel:
-		CMP 	#$F0
+		CMP 	#$C0
 		BCC 	DoLanternKernel
+		CMP 	#$F0
+		BCC 	DoNewLanternKernel
 		JMP  	MountainKernel
 DoLanternKernel:
 
@@ -552,11 +554,109 @@ LT_Return:
 		JMP 	RegularKernel		;3	[46]
 
 
+;===========================================================================
+;=== Handle lantern + ladder row using asymmetric kernel for PF1,PF2
+;
+;-- PF0 is unused
+
+
+DoNewLanternKernel:
+		DEC 	.row
+		LDX 	#7
+		
+LT_LineLoop2:
+			DEY                         ;2  [73]
+            ;/* even lines, sprite 0 */
+			
+			STA 	WSYNC
+			LDA 	#0						;2	[2]
+			STA 	PF0						;3	[5]
+			LDA 	lanternColors,x		    ;4	[9]
+			STA 	COLUPF  			    ;3	[12]
+			LDA 	.lanternDrawPF+0		;3	[15]
+			STA 	PF1 				    ;3	[18]
+			LDA 	.lanternDrawPF+1		;3	[21]
+			ORA 	ladderGfx,x				;4	[25]
+			STA 	PF2 				    ;3	[28]
+									
+			LDA		(.curPlayerPtr),y	    ;5	[33]
+			AND     (.playerMask),y		    ;5	[38]
+			STA 	GRP1    			    ;3	[41]
+
+			LDA 	.lanternDrawPF+2		;3	[44]
+			NOP 							;2	[46]
+			STA 	PF2 				    ;3	[49]
+			LDA 	.lanternDrawPF+3		;3	[52]
+			STA 	PF1 				    ;3	*55*
+
+			LDA 	(.curPlayerColPtr),y	;5	[60]
+			STA		COLUP1  			    ;3	[63]
+			
+			
+			DEX
+			
+            ;/* odd lines, sprite 1 */
+			STA 	WSYNC
+			
+			LDA 	#0						;2	[2]
+			STA 	PF0						;3	[5]
+			LDA 	lanternColors,x		    ;4	[9]
+			STA 	COLUPF  			    ;3	[12]
+			LDA 	.lanternDrawPF+0		;3	[15]
+			STA 	PF1 				    ;3	[18]
+			LDA 	.lanternDrawPF+1		;3	[21]
+			ORA 	ladderGfx,x				;4	[25]
+			STA 	PF2 				    ;3	[28]
+		
+			LDA		(.curEnemyPtr),y		;5	[33]
+			AND 	(.enemyMask),y			;5	[38]
+			STA 	GRP0    				;3	[41]
+
+			LDA 	.lanternDrawPF+2		;3	[44]
+			NOP 							;2	[46]
+			STA 	PF2 				    ;3	[49]
+			LDA 	.lanternDrawPF+3		;4	[52]
+			STA 	PF1 					;3	*55*
+			
+			LDA 	(.curEnemyColorPtr),y	;5	[60]
+			STA		COLUP0  				;3	[63]
+
+			
+			DEX								;2	[65]
+			BPL 	LT_LineLoop2			;3  [68]
+
+		;----- Done with lanterns, load next set of lanterns and prepare for next row
+LT_Return2:
+		LDA 	#0
+		STA 	PF1
+		STA 	PF2
+
+	;// Load in info for next row of graphics
+
+		LDX 	.row				;3	[3]
+		LDA 	screenBgColor,x		;4	[7]
+		STA 	COLUBK  			;3	[10]	-- TIA.colubk = screenBgColor[row];
+		;AND		#1					;2	[12]
+		;STA 	CTRLPF  			;3	[15]	-- TIA.ctrlpf = screenBgColor[row] & 1
+		
+		LDA 	screenLanternsPF+4	;3	[18]
+		STA 	.lanternDrawPF+0	;3	[21]
+		LDA 	screenLanternsPF+5	;3	[24]
+		STA 	.lanternDrawPF+1	;3	[27]
+		LDA 	screenLanternsPF+6	;3	[30]
+		STA 	.lanternDrawPF+2	;3	[33]
+		LDA 	screenLanternsPF+7	;3	[36]
+		STA 	.lanternDrawPF+3	;3	[39]
+		
+		LDA 	screenKernelType,X	;4	[43]	;-- need to load next kernel type
+		JMP 	RegularKernel		;3	[46]
+
+
 		;-------------------------------------------------------------------------
 		;------------------- Asymmetric Kernel... center is symmetric
 		;---
 		;------  This kernel is typically used for drawing platforms.
-
+		align 256
 AsymKernel:
 		LDA 	#0
 		STA 	ENAM1
@@ -793,7 +893,7 @@ sixdigscore
 	sleep 2					;2	[75]
     jmp beginscore          ;3  [2]
 
- ;align 256
+  align 64
 
 loop2
     lda  (scorepointers),y     ;+5  68  204
@@ -812,7 +912,8 @@ loop2
   endif
     ; cycle 0
     lda  (scorepointers+$8),y   ;+5   5   15
-beginscore
+
+beginscore						;----- enter at 2
     sta  GRP1                   ;+3   8   24      D1     D1      D2     --
     lda  (scorepointers+$6),y   ;+5  13   39
     sta  GRP0                   ;+3  16   48      D3     D1      D2     D2
