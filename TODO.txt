@@ -14,10 +14,6 @@ TODO:
   - add enemy/enemy interactions
     - attacks that miss player but hit other enemy
 
-  - lanterns
-     - need to keep track of lanterns taken on a screen
-     - need to keep track of which screens have been cleared
-
   - finish first area (village)
      - collecting all lanterns should open passage way
           on screen 2 to allow player to proceed to garden terrace area
@@ -47,6 +43,9 @@ IMPLEMENTED:
   - basic player/enemy collisions
     - player can attack both yamo and the black ninja, and knock them back
     - enemies can hurt player
+  - lanterns / inventory tracking mostly done for first few screens
+    - game can track which lanterns player collected
+    - game tracks which screens player cleared
   - scoring
     - lanterns (125 pts)
     - punching yamo/ninja (100 pts)

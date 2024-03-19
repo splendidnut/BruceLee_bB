@@ -50,26 +50,34 @@ player1height = $9D
 player2height = $9E
 player3height = $9F
 
+statusbarlength = $A0
+pfscorecolor    = $A1
+pfscore1        = $A2       ;--- use playfield in score area
+pfscore2        = $A3
+lifecolor       = pfscorecolor
+lifepointer     = pfscore1
+lives           = pfscore2
 
+score       = $A4  ;+B5,B6
+score1      = score
+score2      = score + 1
+score3      = score + 2
+scorecolor  = $A7
+rand        = $A8
 
-statusbarlength = $B0
-lifecolor       = $B1
-pfscorecolor    = $B1
-lifepointer     = $B2
-lives           = $B3
-pfscore1        = $B2       ;--- use playfield in score area
-pfscore2        = $B3
+kernelConfig			= $A9
 
-score       = $B4  ;+B5,B6
-scorecolor  = $B7
-rand        = $B8
+;---------------------------------
+;-- axuiliary variables
 
-aux0 = $BA
-aux1 = $BB
-aux2 = $BC
-aux3 = $BD
-aux4 = $BE
-aux5 = $BF
+aux0 = $B0
+aux1 = $B1
+aux2 = $B2
+aux3 = $B3
+aux4 = $B4
+aux5 = $B5
+aux6 = $B6
+aux7 = $B7
 
 ;---------------------------------------------------
 ;--- variables for screen
@@ -91,11 +99,13 @@ screenData           = $F080  ; 80..97
 screenBgColor        = $F098  ; 98..AF
 screenKernelType     = $F0B0  ; B0..C7
 screenLanternsPF     = $F0D0  ; D0..DF
+screenWallPF         = $F0E0  ; E0..EF
 
 writeScreenData       = $F000
 writeScreenBgColor    = $F018
 writeScreenKernelType = $F030
 writeScreenLanternsPF = $F050
+writeScreenWallPF     = $F060
 
 
 ;--------------------------------------------------------------------
@@ -163,6 +173,9 @@ z = $d9
 kernelTemps         = $DA ;-- kernel uses a bunch of memory
 
 scorepointers       = $E0 ;-- uses 6
+
+temp8 = $E0
+temp9 = $E1
 
 temp1 = $EA
 temp2 = $EB
